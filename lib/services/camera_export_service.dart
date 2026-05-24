@@ -45,17 +45,16 @@ class CameraExportService {
     }
 
     if (useGalleryExport) {
-      return _exportViaDcimCamera(items);
+      return _exportViaGallery(items);
     }
     return _exportViaFileCopy(fallbackRoot: fallbackRoot, items: items);
   }
 
-  /// Android/iOS：写入系统 DCIM/Camera（经 MediaStore，不在表情包目录下建 camera）
-  Future<CameraExportResult> _exportViaDcimCamera(
+  Future<CameraExportResult> _exportViaGallery(
     List<EmojiExportItem> items,
   ) async {
     if (!await GalleryImageExporter.ensureAccess()) {
-      throw CameraExportException('未获得相册写入权限，无法保存到 DCIM/Camera');
+      throw CameraExportException('未获得相册写入权限');
     }
 
     final batchFolder = '$batchDirPrefix${_batchFolderName(DateTime.now())}';
@@ -67,27 +66,26 @@ class CameraExportService {
       final src = File(item.sourcePath);
       if (!await src.exists()) continue;
 
-      await GalleryImageExporter.saveToDcimCamera(item.sourcePath);
-
+      final assetId = await GalleryImageExporter.saveToGallery(item.sourcePath);
       final name = p.basename(item.sourcePath);
+
       records.add(
         CameraExportRecord(
           id: '${exportedAt.millisecondsSinceEpoch}_${index++}',
           sourcePath: item.sourcePath,
-          destPath:
-              'dcim:${GalleryImageExporter.dcimCameraPath}/$batchFolder/$name',
+          destPath: 'gallery:$batchFolder/$name',
           albumName: item.albumName,
           batchFolder: batchFolder,
-          batchRootPath:
-              'dcim:${GalleryImageExporter.dcimCameraPath}/$batchFolder',
-          storageLocation: 'dcim',
+          batchRootPath: 'gallery:$batchFolder',
+          storageLocation: 'gallery',
           exportedAt: exportedAt,
+          galleryAssetId: assetId,
         ),
       );
     }
 
     if (records.isEmpty) {
-      throw CameraExportException('所选文件均不存在或无法保存到 DCIM/Camera');
+      throw CameraExportException('所选文件均不存在或无法保存到相册');
     }
 
     await _store.addRecords(records);
@@ -95,25 +93,17 @@ class CameraExportService {
     return CameraExportResult(
       batchFolder: batchFolder,
       copiedCount: records.length,
-      batchRootPath:
-          'dcim:${GalleryImageExporter.dcimCameraPath}/$batchFolder',
-      locationDescription: GalleryImageExporter.dcimCameraPath,
+      batchRootPath: 'gallery:$batchFolder',
+      locationDescription: '系统相册（Pictures）',
       storageLocation: CameraStorageLocation.dcim,
     );
   }
 
-  /// 桌面端：直写 DCIM/Camera 目录，失败则报错（不在表情包目录下建 camera）
   Future<CameraExportResult> _exportViaFileCopy({
     required String fallbackRoot,
     required List<EmojiExportItem> items,
   }) async {
     final pathResult = await _pathResolver.resolve(fallbackRoot: fallbackRoot);
-    if (pathResult.location != CameraStorageLocation.dcim) {
-      throw CameraExportException(
-        '无法写入 DCIM/Camera，请检查该目录是否存在且可写',
-      );
-    }
-
     final batchFolder = '$batchDirPrefix${_batchFolderName(DateTime.now())}';
     final batchDir = Directory(p.join(pathResult.basePath, batchFolder));
     await batchDir.create(recursive: true);
@@ -157,7 +147,7 @@ class CameraExportService {
       copiedCount: records.length,
       batchRootPath: batchDir.path,
       locationDescription: pathResult.description,
-      storageLocation: CameraStorageLocation.dcim,
+      storageLocation: pathResult.location,
     );
   }
 
@@ -171,12 +161,21 @@ class CameraExportService {
     final batchRecords =
         records.where((r) => r.batchFolder == batchFolder).toList();
 
+    final assetIds = batchRecords
+        .map((r) => r.galleryAssetId)
+        .whereType<String>()
+        .toList();
+
+    if (assetIds.isNotEmpty) {
+      await GalleryImageExporter.deleteByAssetIds(assetIds);
+    }
+
     final root = batchRootPath ??
         (batchRecords.isNotEmpty ? batchRecords.first.batchRootPath : null);
 
     if (root != null &&
-        !root.startsWith('dcim:') &&
-        !root.startsWith('gallery:')) {
+        !root.startsWith('gallery:') &&
+        !root.startsWith('dcim:')) {
       final dir = Directory(root);
       if (await dir.exists()) {
         await dir.delete(recursive: true);
@@ -190,9 +189,15 @@ class CameraExportService {
 
   Future<int> cleanupAll() async {
     final all = await _store.loadAll();
+    final assetIds =
+        all.map((r) => r.galleryAssetId).whereType<String>().toList();
+    if (assetIds.isNotEmpty) {
+      await GalleryImageExporter.deleteByAssetIds(assetIds);
+    }
+
     final roots = all
         .map((r) => r.batchRootPath)
-        .where((r) => !r.startsWith('dcim:') && !r.startsWith('gallery:'))
+        .where((r) => !r.startsWith('gallery:') && !r.startsWith('dcim:'))
         .toSet();
 
     for (final root in roots) {

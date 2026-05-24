@@ -1,125 +1,162 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../models/emoji_album.dart';
+import '../services/album_cover_service.dart';
+import '../services/preferences_service.dart';
 import 'bottom_info_overlay.dart';
 import 'lazy_file_image.dart';
 
-/// 相册风格卡片：封面 + 底部悬浮文件夹名
+/// 相册卡片：九宫格或单张封面 + 名称
 class AlbumCard extends StatelessWidget {
   const AlbumCard({
     super.key,
     required this.album,
     required this.decodeSide,
     required this.onTap,
+    this.onDoubleTap,
     this.selectable = false,
     this.selected = false,
-    this.onSelectToggle,
+    this.coverStyle = AlbumCoverStyle.grid,
   });
 
   final EmojiAlbum album;
   final double decodeSide;
   final VoidCallback onTap;
+  final VoidCallback? onDoubleTap;
   final bool selectable;
   final bool selected;
-  final VoidCallback? onSelectToggle;
+  final AlbumCoverStyle coverStyle;
 
   @override
   Widget build(BuildContext context) {
-    final cover = album.displayCover;
+    final coverService = context.read<AlbumCoverService>();
 
     return RepaintBoundary(
       child: Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: ClipRRect(
+        color: Colors.transparent,
+        child: GestureDetector(
+          onDoubleTap: onDoubleTap,
+          child: InkWell(
+          onTap: onTap,
           borderRadius: BorderRadius.circular(12),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              _CoverImage(path: cover, decodeSide: decodeSide),
-              if (selectable)
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: selected
-                            ? Theme.of(context).colorScheme.primary
-                            : Colors.transparent,
-                        width: 3,
-                      ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ColoredBox(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  child: coverStyle == AlbumCoverStyle.grid
+                      ? _GridCover(
+                          thumbs: coverService.sortedThumbs(album),
+                          decodeSide: decodeSide,
+                        )
+                      : _SingleCover(
+                          album: album,
+                          decodeSide: decodeSide,
+                          coverService: coverService,
+                        ),
+                ),
+                if (selectable)
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: Icon(
+                      selected ? Icons.check_circle : Icons.circle_outlined,
                       color: selected
-                          ? Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withValues(alpha: 0.25)
-                          : Colors.black.withValues(alpha: 0.08),
+                          ? Theme.of(context).colorScheme.primary
+                          : Colors.white70,
+                      shadows: const [Shadow(blurRadius: 4)],
                     ),
                   ),
-                ),
-              if (selectable)
-                Positioned(
-                  top: 6,
-                  left: 6,
-                  child: Icon(
-                    selected
-                        ? Icons.check_circle
-                        : Icons.circle_outlined,
-                    color: selected
-                        ? Theme.of(context).colorScheme.primary
-                        : Colors.white,
-                    size: 26,
-                  ),
-                ),
-              BottomInfoOverlay(
-                title: album.name,
-                subtitle: '${album.count} 张',
-              ),
-            ],
+                BottomInfoOverlay(title: album.name),
+              ],
+            ),
           ),
         ),
-      ),
+        ),
       ),
     );
   }
 }
 
-class _CoverImage extends StatelessWidget {
-  const _CoverImage({this.path, required this.decodeSide});
+class _GridCover extends StatelessWidget {
+  const _GridCover({required this.thumbs, required this.decodeSide});
 
-  final String? path;
+  final List<String> thumbs;
   final double decodeSide;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    if (path == null) {
-      return ColoredBox(
-        color: colorScheme.surfaceContainerHighest,
+    if (thumbs.isEmpty) {
+      return Center(
         child: Icon(
           Icons.folder_outlined,
-          size: 48,
-          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+          size: 40,
+          color: Theme.of(context)
+              .colorScheme
+              .onSurfaceVariant
+              .withValues(alpha: 0.5),
         ),
       );
     }
 
-    return ColoredBox(
-      color: colorScheme.surfaceContainerHighest,
-      child: Center(
-        child: LazyFileImage(
-          path: path!,
-          decodeSide: decodeSide,
-          fit: BoxFit.contain,
-          placeholderColor: colorScheme.surfaceContainerHighest,
-          errorIcon: Icon(
-            Icons.broken_image_outlined,
-            color: colorScheme.onSurfaceVariant,
-          ),
-        ),
+    final cellSide = decodeSide / 3;
+    return GridView.builder(
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: 1,
+        mainAxisSpacing: 1,
       ),
+      itemCount: thumbs.length,
+      itemBuilder: (context, index) {
+        return LazyFileImage(
+          path: thumbs[index],
+          decodeSide: cellSide,
+          fit: BoxFit.cover,
+        );
+      },
+    );
+  }
+}
+
+class _SingleCover extends StatelessWidget {
+  const _SingleCover({
+    required this.album,
+    required this.decodeSide,
+    required this.coverService,
+  });
+
+  final EmojiAlbum album;
+  final double decodeSide;
+  final AlbumCoverService coverService;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<String?>(
+      future: coverService.resolveSingleCover(album),
+      builder: (context, snapshot) {
+        final path = snapshot.data;
+        if (path == null) {
+          return Center(
+            child: Icon(
+              Icons.folder_outlined,
+              size: 40,
+              color: Theme.of(context)
+                  .colorScheme
+                  .onSurfaceVariant
+                  .withValues(alpha: 0.5),
+            ),
+          );
+        }
+        return LazyFileImage(
+          path: path,
+          decodeSide: decodeSide,
+          fit: BoxFit.cover,
+        );
+      },
     );
   }
 }

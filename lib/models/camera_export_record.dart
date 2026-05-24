@@ -9,6 +9,7 @@ class CameraExportRecord {
     required this.batchRootPath,
     required this.storageLocation,
     required this.exportedAt,
+    this.galleryAssetId,
   });
 
   final String id;
@@ -16,11 +17,11 @@ class CameraExportRecord {
   final String destPath;
   final String albumName;
   final String batchFolder;
-  /// 该批次文件所在根目录（用于清理）
   final String batchRootPath;
-  /// dcim | app_root
   final String storageLocation;
   final DateTime exportedAt;
+  /// 系统相册 Asset ID，用于删除
+  final String? galleryAssetId;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -31,6 +32,7 @@ class CameraExportRecord {
         'batchRootPath': batchRootPath,
         'storageLocation': storageLocation,
         'exportedAt': exportedAt.toIso8601String(),
+        'galleryAssetId': galleryAssetId,
       };
 
   factory CameraExportRecord.fromJson(Map<String, dynamic> json) {
@@ -44,6 +46,7 @@ class CameraExportRecord {
           _inferBatchRoot(json['destPath'] as String, json['batchFolder'] as String),
       storageLocation: json['storageLocation'] as String? ?? 'app_root',
       exportedAt: DateTime.parse(json['exportedAt'] as String),
+      galleryAssetId: json['galleryAssetId'] as String?,
     );
   }
 
@@ -79,9 +82,9 @@ class CameraExportBatch {
   String get locationLabel {
     switch (storageLocation) {
       case 'gallery':
-        return '系统相册';
+        return '系统相册 Pictures';
       case 'dcim':
-        return '系统相册 DCIM/Camera';
+        return '系统相册';
       default:
         return '应用目录 camera';
     }

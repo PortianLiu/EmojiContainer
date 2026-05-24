@@ -1,23 +1,32 @@
 import 'dart:io';
 
-import 'package:gal/gal.dart';
+import 'package:photo_manager/photo_manager.dart';
 
-/// 通过系统 MediaStore 保存到相册（Android 对应 DCIM/Camera）
+/// 通过 MediaStore 保存到系统相册，并返回 Asset ID 供删除
 class GalleryImageExporter {
-  static const dcimCameraPath = '/storage/emulated/0/DCIM/Camera';
-
   static Future<bool> ensureAccess() async {
-    if (await Gal.hasAccess()) return true;
-    return Gal.requestAccess();
+    final state = await PhotoManager.requestPermissionExtend();
+    return state.isAuth || state.hasAccess;
   }
 
-  /// 保存到系统相机相册（DCIM/Camera），不使用自定义 album 名
-  static Future<void> saveToDcimCamera(String sourcePath) async {
-    try {
-      await Gal.putImage(sourcePath);
-    } on GalException catch (e) {
-      throw GalleryExportException(e.type.message);
+  static Future<String> saveToGallery(String sourcePath) async {
+    final file = File(sourcePath);
+    if (!await file.exists()) {
+      throw GalleryExportException('源文件不存在');
     }
+
+    final entity = await PhotoManager.editor.saveImageWithPath(
+      sourcePath,
+      title: sourcePath.split(Platform.pathSeparator).last,
+    );
+
+    return entity.id;
+  }
+
+  static Future<int> deleteByAssetIds(List<String> assetIds) async {
+    if (assetIds.isEmpty) return 0;
+    final deleted = await PhotoManager.editor.deleteWithIds(assetIds);
+    return deleted.length;
   }
 }
 

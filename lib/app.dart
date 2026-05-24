@@ -6,10 +6,16 @@ import 'bloc/root_directory/root_directory_cubit.dart';
 import 'bloc/root_directory/root_directory_state.dart';
 import 'screens/albums_screen.dart';
 import 'screens/root_setup_screen.dart';
+import 'services/album_manage_service.dart';
 import 'services/camera_export_service.dart';
 import 'services/camera_export_store.dart';
+import 'services/emoji_import_service.dart';
 import 'services/emoji_repository.dart';
 import 'services/emoji_send_service.dart';
+import 'services/album_cover_service.dart';
+import 'services/album_group_service.dart';
+import 'services/emoji_delete_service.dart';
+import 'services/nomedia_service.dart';
 import 'services/preferences_service.dart';
 import 'services/storage_permission_service.dart';
 
@@ -26,6 +32,17 @@ class EmojiContainerApp extends StatelessWidget {
         RepositoryProvider(create: (_) => StoragePermissionService()),
         RepositoryProvider(create: (_) => CameraExportStore()),
         RepositoryProvider(create: (_) => CameraExportService()),
+        RepositoryProvider(create: (_) => AlbumManageService()),
+        RepositoryProvider(create: (_) => AlbumCoverService()),
+        RepositoryProvider(create: (_) => AlbumOrderService()),
+        RepositoryProvider(create: (_) => AlbumGroupService()),
+        RepositoryProvider(create: (_) => EmojiDeleteService()),
+        RepositoryProvider(create: (_) => NomediaService()),
+        RepositoryProvider(
+          create: (context) => EmojiImportService(
+            storagePermission: context.read<StoragePermissionService>(),
+          ),
+        ),
       ],
       child: MultiBlocProvider(
         providers: [
@@ -37,6 +54,10 @@ class EmojiContainerApp extends StatelessWidget {
           BlocProvider(
             create: (context) => AlbumsCubit(
               repository: context.read<EmojiRepository>(),
+              preferences: context.read<PreferencesService>(),
+              nomediaService: context.read<NomediaService>(),
+              groupService: context.read<AlbumGroupService>(),
+              orderService: context.read<AlbumOrderService>(),
             ),
           ),
         ],

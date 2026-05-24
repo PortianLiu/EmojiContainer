@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// 底部悬浮信息条：渐变遮罩 + 标题（可选副标题 + 右侧操作）
+/// 底部文字条：贴边半透明黑底，仅覆盖文字区域高度
 class BottomInfoOverlay extends StatelessWidget {
   const BottomInfoOverlay({
     super.key,
@@ -12,8 +12,8 @@ class BottomInfoOverlay extends StatelessWidget {
 
   final String title;
   final String? subtitle;
+  /// 保留参数以兼容调用方；遮罩本身不做圆角
   final bool rounded;
-  /// 标题右侧控件（如电脑端复制按钮）
   final Widget? trailing;
 
   @override
@@ -24,24 +24,12 @@ class BottomInfoOverlay extends StatelessWidget {
       bottom: 0,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.transparent,
-              Colors.black.withValues(alpha: 0.55),
-              Colors.black.withValues(alpha: 0.78),
-            ],
-            stops: const [0.0, 0.45, 1.0],
-          ),
-          borderRadius: rounded
-              ? const BorderRadius.vertical(bottom: Radius.circular(12))
-              : BorderRadius.zero,
+          color: Colors.black.withValues(alpha: 0.38),
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 20, 8, 8),
+          padding: const EdgeInsets.fromLTRB(8, 5, 6, 5),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
                 child: Column(
@@ -54,15 +42,8 @@ class BottomInfoOverlay extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 13,
+                        fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        shadows: [
-                          Shadow(
-                            offset: Offset(0, 1),
-                            blurRadius: 2,
-                            color: Color(0x88000000),
-                          ),
-                        ],
                       ),
                     ),
                     if (subtitle != null) ...[
@@ -72,15 +53,8 @@ class BottomInfoOverlay extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.85),
-                          fontSize: 11,
-                          shadows: const [
-                            Shadow(
-                              offset: Offset(0, 1),
-                              blurRadius: 2,
-                              color: Color(0x66000000),
-                            ),
-                          ],
+                          color: Colors.white.withValues(alpha: 0.88),
+                          fontSize: 10,
                         ),
                       ),
                     ],
@@ -88,7 +62,7 @@ class BottomInfoOverlay extends StatelessWidget {
                 ),
               ),
               if (trailing != null) ...[
-                const SizedBox(width: 6),
+                const SizedBox(width: 4),
                 trailing!,
               ],
             ],

@@ -39,10 +39,9 @@ class _CameraExportHistoryScreenState extends State<CameraExportHistoryScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('删除该批次'),
         content: Text(
-          batch.batchRootPath.startsWith('dcim:') ||
-                  batch.storageLocation == 'gallery'
-              ? '将清除 ${batch.count} 条导出记录。\n'
-                  '（图片在系统相册 DCIM/Camera 中，需在相册里手动删除）'
+          batch.batchRootPath.startsWith('gallery:') ||
+                  batch.batchRootPath.startsWith('dcim:')
+              ? '将删除 ${batch.count} 张系统相册中的图片及对应记录。'
               : '将删除 ${batch.count} 个文件（${batch.locationLabel}），\n'
                   '路径：${batch.batchRootPath}\n'
                   '此操作不可恢复。',
@@ -80,7 +79,7 @@ class _CameraExportHistoryScreenState extends State<CameraExportHistoryScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('清理全部 Camera 副本'),
         content: const Text(
-          '将删除所有导出批次文件（含 DCIM/Camera 与应用目录下的副本）及全部记录。\n此操作不可恢复。',
+          '将删除所有导出批次在系统相册中的图片及全部记录。',
         ),
         actions: [
           TextButton(

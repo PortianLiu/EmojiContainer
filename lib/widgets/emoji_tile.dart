@@ -15,6 +15,7 @@ class EmojiTile extends StatelessWidget {
     required this.path,
     required this.decodeSide,
     this.onTap,
+    this.onLongPress,
     this.selectable = false,
     this.selected = false,
   });
@@ -22,6 +23,7 @@ class EmojiTile extends StatelessWidget {
   final String path;
   final double decodeSide;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final bool selectable;
   final bool selected;
 
@@ -29,43 +31,44 @@ class EmojiTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final name = fileDisplayName(path);
+    final canQuickSend = !selectable && (supportsSystemShare || isDesktop);
 
     Widget tile = RepaintBoundary(
       child: ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          ColoredBox(
-            color: colorScheme.surfaceContainerHighest,
-            child: Center(
-              child: LazyFileImage(
-                path: path,
-                decodeSide: decodeSide,
-                fit: BoxFit.contain,
-                placeholderColor: colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            ColoredBox(
+              color: colorScheme.surfaceContainerHighest,
+              child: Center(
+                child: LazyFileImage(
+                  path: path,
+                  decodeSide: decodeSide,
+                  fit: BoxFit.contain,
+                  placeholderColor: colorScheme.surfaceContainerHighest,
+                ),
               ),
             ),
-          ),
-          if (selectable)
-            Positioned(
-              top: 6,
-              right: 6,
-              child: Icon(
-                selected ? Icons.check_circle : Icons.circle_outlined,
-                color: selected ? colorScheme.primary : Colors.white70,
-                shadows: const [Shadow(blurRadius: 4)],
+            if (selectable)
+              Positioned(
+                top: 6,
+                right: 6,
+                child: Icon(
+                  selected ? Icons.check_circle : Icons.circle_outlined,
+                  color: selected ? colorScheme.primary : Colors.white70,
+                  shadows: const [Shadow(blurRadius: 4)],
+                ),
               ),
-            ),
-          if (!selectable)
-            BottomInfoOverlay(
-              title: name,
-              trailing: DesktopCopyButton(filePath: path),
-            )
-          else if (selected)
-            BottomInfoOverlay(title: name),
-        ],
-      ),
+            if (!selectable)
+              BottomInfoOverlay(
+                title: name,
+                trailing: DesktopCopyButton(filePath: path),
+              )
+            else if (selected)
+              BottomInfoOverlay(title: name),
+          ],
+        ),
       ),
     );
 
@@ -75,15 +78,15 @@ class EmojiTile extends StatelessWidget {
 
     return Material(
       color: Colors.transparent,
-      child: InkWell(
+      child: GestureDetector(
         onTap: onTap,
-        onLongPress: !selectable && supportsSystemShare
+        onLongPress: onLongPress,
+        onDoubleTap: canQuickSend
             ? () => context.read<EmojiSendService>().sendWithFeedback(
                   context,
                   path,
                 )
             : null,
-        borderRadius: BorderRadius.circular(8),
         child: tile,
       ),
     );

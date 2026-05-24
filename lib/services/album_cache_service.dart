@@ -15,7 +15,7 @@ class AlbumCacheService {
     return File(p.join(dir.path, _fileName));
   }
 
-  Future<List<EmojiAlbum>?> load(String rootPath) async {
+  Future<List<EmojiAlbumGroup>?> loadGroups(String rootPath) async {
     final file = await _cacheFile();
     if (!await file.exists()) return null;
 
@@ -23,14 +23,20 @@ class AlbumCacheService {
       final json = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
       if (json['rootPath'] as String != rootPath) return null;
 
-      final list = json['albums'] as List<dynamic>;
+      final list = json['groups'] as List<dynamic>? ??
+          [
+            {
+              'name': null,
+              'albums': json['albums'] as List<dynamic>? ?? [],
+            },
+          ];
+
       return list.map((e) {
         final m = e as Map<String, dynamic>;
-        return EmojiAlbum(
-          name: m['name'] as String,
-          path: m['path'] as String,
-          emojiPaths: List<String>.from(m['emojiPaths'] as List),
-          coverPath: m['coverPath'] as String?,
+        final albums = (m['albums'] as List<dynamic>).map(_albumFromJson).toList();
+        return EmojiAlbumGroup(
+          name: m['name'] as String?,
+          albums: albums,
         );
       }).toList();
     } catch (_) {
@@ -38,23 +44,55 @@ class AlbumCacheService {
     }
   }
 
-  Future<void> save(String rootPath, List<EmojiAlbum> albums) async {
+  EmojiAlbum _albumFromJson(dynamic e) {
+    final m = e as Map<String, dynamic>;
+    return EmojiAlbum(
+      name: m['name'] as String,
+      path: m['path'] as String,
+      emojiPaths: List<String>.from(m['emojiPaths'] as List),
+      coverPath: m['coverPath'] as String?,
+      imageCount: m['imageCount'] as int?,
+    );
+  }
+
+  Future<List<EmojiAlbum>?> load(String rootPath) async {
+    final groups = await loadGroups(rootPath);
+    if (groups == null) return null;
+    return groups.expand((g) => g.albums).toList();
+  }
+
+  Future<void> saveGroups(String rootPath, List<EmojiAlbumGroup> groups) async {
     final file = await _cacheFile();
     final data = {
       'rootPath': rootPath,
       'cachedAt': DateTime.now().toIso8601String(),
-      'albums': albums
+      'groups': groups
           .map(
-            (a) => {
-              'name': a.name,
-              'path': a.path,
-              'emojiPaths': a.emojiPaths,
-              'coverPath': a.coverPath,
+            (g) => {
+              'name': g.name,
+              'albums': g.albums
+                  .map(
+                    (a) => {
+                      'name': a.name,
+                      'path': a.path,
+                      'emojiPaths': a.emojiPaths,
+                      'coverPath': a.coverPath,
+                      'imageCount': a.imageCount,
+                    },
+                  )
+                  .toList(),
             },
           )
           .toList(),
     };
     await file.writeAsString(jsonEncode(data));
+  }
+
+  Future<void> save(String rootPath, List<EmojiAlbum> albums) async {
+    await saveGroups(
+      rootPath,
+      [EmojiAlbumGroup(name: null, albums: albums)],
+    );
   }
 
   Future<void> clear() async {
