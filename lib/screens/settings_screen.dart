@@ -177,6 +177,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   groupValue: _browseMode,
                   onChanged: (v) => setState(() => _browseMode = v!),
                 ),
+                if (_browseMode == BrowseMode.flat) ...[
+                  const SizedBox(height: 4),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton.icon(
+                      onPressed: _resetAlbumOrder,
+                      icon: const Icon(Icons.sort, size: 18),
+                      label: const Text('恢复默认排序'),
+                      style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4, top: 4, bottom: 4),
+                    child: Text(
+                      '清除首页手动拖拽顺序，按修改时间从新到旧排列',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                ],
                 _CompactRadioTile<BrowseMode>(
                   title: BrowseMode.nested.settingsTitle,
                   subtitle: BrowseMode.nested.settingsSubtitle,
@@ -203,31 +228,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     value: NestedSortOrder.modifiedTime,
                     groupValue: _nestedSortOrder,
                     onChanged: (v) => setState(() => _nestedSortOrder = v!),
-                  ),
-                ],
-                if (_browseMode == BrowseMode.flat) ...[
-                  const SizedBox(height: 4),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: OutlinedButton.icon(
-                      onPressed: _resetAlbumOrder,
-                      icon: const Icon(Icons.sort, size: 18),
-                      label: const Text('恢复默认排序'),
-                      style: OutlinedButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 4, top: 4),
-                    child: Text(
-                      '清除首页手动拖拽顺序，按修改时间从新到旧排列',
-                      style: theme.textTheme.bodySmall,
-                    ),
                   ),
                 ],
                 const _SectionDivider(),
