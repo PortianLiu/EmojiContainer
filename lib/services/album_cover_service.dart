@@ -75,9 +75,7 @@ class AlbumOrderService {
   List<EmojiAlbum> applyOrder(List<EmojiAlbum> albums, List<String> savedOrder) {
     if (savedOrder.isEmpty) {
       final sorted = List<EmojiAlbum>.from(albums);
-      sorted.sort(
-        (a, b) => _dirModified(b.path).compareTo(_dirModified(a.path)),
-      );
+      sortAlbumsByActivityDesc(sorted);
       return sorted;
     }
 
@@ -87,17 +85,9 @@ class AlbumOrderService {
       final album = byPath.remove(path);
       if (album != null) result.add(album);
     }
-    final rest = byPath.values.toList()
-      ..sort((a, b) => _dirModified(b.path).compareTo(_dirModified(a.path)));
+    final rest = byPath.values.toList();
+    sortAlbumsByActivityDesc(rest);
     result.addAll(rest);
     return result;
-  }
-
-  int _dirModified(String path) {
-    try {
-      return FileStat.statSync(path).modified.millisecondsSinceEpoch;
-    } catch (_) {
-      return 0;
-    }
   }
 }

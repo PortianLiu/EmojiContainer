@@ -94,6 +94,7 @@ class EmojiRepository {
   Future<List<EmojiAlbum>> _collectFlatAlbums(Directory root) async {
     final albums = <EmojiAlbum>[];
     await _walkFlatAlbums(root, albums);
+    sortAlbumsByActivityDesc(albums);
     return albums;
   }
 
@@ -136,10 +137,7 @@ class EmojiRepository {
       );
     }
 
-    albums.sort(
-      (a, b) =>
-          _directoryModifiedMillis(b.path).compareTo(_directoryModifiedMillis(a.path)),
-    );
+    sortAlbumsByActivityDesc(albums);
     return albums;
   }
 
@@ -156,7 +154,8 @@ class EmojiRepository {
       result.add(entity);
     }
     result.sort(
-      (a, b) => _folderName(a.path).compareTo(_folderName(b.path)),
+      (a, b) => directoryModifiedMillisSync(b.path)
+          .compareTo(directoryModifiedMillisSync(a.path)),
     );
     return result;
   }
@@ -169,14 +168,6 @@ class EmojiRepository {
     final sorted = List<String>.from(paths);
     sortPathsByTimeDescSync(sorted);
     return sorted.first;
-  }
-
-  int _directoryModifiedMillis(String path) {
-    try {
-      return FileStat.statSync(path).modified.millisecondsSinceEpoch;
-    } catch (_) {
-      return 0;
-    }
   }
 
   Future<List<String>> _collectImages(

@@ -197,7 +197,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Padding(
                     padding: const EdgeInsets.only(left: 4, top: 4, bottom: 4),
                     child: Text(
-                      '清除首页手动拖拽顺序，按修改时间从新到旧排列',
+                      '清除首页手动拖拽顺序，按夹内最新图片修改时间从新到旧排列',
                       style: theme.textTheme.bodySmall,
                     ),
                   ),
