@@ -50,6 +50,38 @@ flutter run -d windows
 
 - 使用本地 Gradle：`A:\WorkSpace\AllSDK\Gradle\user_home`（见 `android/gradle.properties`、`gradlew.bat`）
 - `gradlew.bat` 请保持 **ASCII 注释**（避免 CMD 在 GBK 下把中文当成命令执行）
+- Release 签名：复制 `android/key.properties.example` 为 `android/key.properties` 并填写 JKS 信息
+
+## CI 自动打包
+
+推送 **`v*` Tag**（如 `v2.3`）后自动构建 Windows 便携包与 Android APK。
+
+### GitHub Actions
+
+- 工作流：`.github/workflows/build-and-release.yml`
+- 产物：`EmojiContainer_Win_vX.Y.zip`、`EmojiContainer_Android_vX.Y.apk`（发布到 GitHub Release）
+- 在仓库 **Settings → Secrets and variables → Actions** 添加：
+
+| Secret | 说明 |
+|--------|------|
+| `ANDROID_KEYSTORE_BASE64` | JKS 文件 Base64 |
+| `ANDROID_KEYSTORE_PASSWORD` | 密钥库密码 |
+| `ANDROID_KEY_ALIAS` | 别名 |
+| `ANDROID_KEY_PASSWORD` | 密钥密码 |
+
+生成 Base64（PowerShell）：
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\Users\PortianLiu\.android\keystores\emoji-container-key.jks")) | Set-Clipboard
+```
+
+### Gitee Go
+
+- 流水线：`.workflow/tag-pipeline.yml`（需在仓库中启用 Gitee Go）
+- 在 **流水线 → 密钥/变量** 中配置与 GitHub 相同的四个变量名
+- 构建完成后可在制品库下载 `build/dist/` 下的 zip 与 apk
+
+与 TodoMatrix 参考配置的差异：本项目**无 Inno Setup 安装包**，Windows 仅发布 zip 便携版。
 
 ## 技术栈
 
