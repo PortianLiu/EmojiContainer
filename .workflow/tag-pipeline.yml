@@ -55,12 +55,20 @@ stages:
             Write-Host "=== 构建 Android APK ==="
             flutter build apk --release
 
+            Write-Host "=== 安装 7-Zip 与 Inno Setup ==="
+            choco install 7zip innosetup -y
+
             Write-Host "=== 打包产物 ==="
             New-Item -ItemType Directory -Force -Path build/dist | Out-Null
             $zipPath = "build/dist/EmojiContainer_Win_$TAG.zip"
             if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
             Compress-Archive -Path "build/windows/x64/runner/Release/*" -DestinationPath $zipPath
+            7z a -t7z -mx=9 -mmt=on "build/dist/EmojiContainer_Win_$TAG.7z" "build/windows/x64/runner/Release/*"
             Copy-Item "build/app/outputs/flutter-apk/app-release.apk" "build/dist/EmojiContainer_Android_$TAG.apk"
+
+            $VERSION = $TAG.TrimStart('v')
+            $env:MY_APP_VERSION = $VERSION
+            iscc "EmojiContainer.iss"
           artifacts:
             - name: BUILD_ARTIFACT
               path:

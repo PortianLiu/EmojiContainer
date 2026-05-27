@@ -65,7 +65,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     if (path != null) {
       _createRootController.text = path;
+      await _saveCreateRoot();
     }
+  }
+
+  Future<void> _saveCreateRoot() async {
+    final prefs = context.read<PreferencesService>();
+    final text = _createRootController.text.trim();
+    await prefs.setAlbumCreateRoot(text.isEmpty ? null : text);
+  }
+
+  Future<void> _reloadAlbums() async {
+    final root = context.read<RootDirectoryCubit>().state.path;
+    if (root != null) {
+      context.read<AlbumsCubit>().load(root);
+    }
+  }
+
+  Future<void> _setImportMode(ImportMode mode) async {
+    setState(() => _importMode = mode);
+    await context.read<PreferencesService>().setImportMode(mode);
+  }
+
+  Future<void> _setBrowseMode(BrowseMode mode) async {
+    setState(() => _browseMode = mode);
+    await context.read<PreferencesService>().setBrowseMode(mode);
+    await _reloadAlbums();
+  }
+
+  Future<void> _setCoverStyle(AlbumCoverStyle style) async {
+    setState(() => _coverStyle = style);
+    await context.read<PreferencesService>().setAlbumCoverStyle(style);
+    await _reloadAlbums();
+  }
+
+  Future<void> _setNestedSortOrder(NestedSortOrder order) async {
+    setState(() => _nestedSortOrder = order);
+    await context.read<PreferencesService>().setNestedSortOrder(order);
+    await _reloadAlbums();
+  }
+
+  Future<void> _setAutoNomedia(bool value) async {
+    setState(() => _autoNomedia = value);
+    await context.read<PreferencesService>().setAutoNomedia(value);
   }
 
   Future<void> _resetAlbumOrder() async {
@@ -102,31 +144,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Future<void> _save() async {
-    final prefs = context.read<PreferencesService>();
-    final text = _createRootController.text.trim();
-    await prefs.setAlbumCreateRoot(text.isEmpty ? null : text);
-    await prefs.setImportMode(_importMode);
-    await prefs.setBrowseMode(_browseMode);
-    await prefs.setAlbumCoverStyle(_coverStyle);
-    await prefs.setNestedSortOrder(_nestedSortOrder);
-    await prefs.setAutoNomedia(_autoNomedia);
-
-    final root = context.read<RootDirectoryCubit>().state.path;
-    if (root != null) {
-      context.read<AlbumsCubit>().load(root);
-    }
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('设置已保存，列表已刷新'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final rootPath = context.watch<RootDirectoryCubit>().state.path ?? '';
@@ -148,6 +165,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 TextField(
                   controller: _createRootController,
                   style: theme.textTheme.bodyMedium,
+                  onEditingComplete: _saveCreateRoot,
+                  onTapOutside: (_) => _saveCreateRoot(),
                   decoration: const InputDecoration(
                     isDense: true,
                     border: OutlineInputBorder(),
@@ -175,7 +194,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   subtitle: BrowseMode.flat.settingsSubtitle,
                   value: BrowseMode.flat,
                   groupValue: _browseMode,
-                  onChanged: (v) => setState(() => _browseMode = v!),
+                  onChanged: (v) => _setBrowseMode(v!),
                 ),
                 if (_browseMode == BrowseMode.flat) ...[
                   const SizedBox(height: 4),
@@ -207,7 +226,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   subtitle: BrowseMode.nested.settingsSubtitle,
                   value: BrowseMode.nested,
                   groupValue: _browseMode,
-                  onChanged: (v) => setState(() => _browseMode = v!),
+                  onChanged: (v) => _setBrowseMode(v!),
                 ),
                 if (_browseMode == BrowseMode.nested) ...[
                   _SectionTitle('嵌套同级排序', topGap: 4),
@@ -215,19 +234,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     title: NestedSortOrder.foldersFirst.settingsTitle,
                     value: NestedSortOrder.foldersFirst,
                     groupValue: _nestedSortOrder,
-                    onChanged: (v) => setState(() => _nestedSortOrder = v!),
+                    onChanged: (v) => _setNestedSortOrder(v!),
                   ),
                   _CompactRadioTile<NestedSortOrder>(
                     title: NestedSortOrder.imagesFirst.settingsTitle,
                     value: NestedSortOrder.imagesFirst,
                     groupValue: _nestedSortOrder,
-                    onChanged: (v) => setState(() => _nestedSortOrder = v!),
+                    onChanged: (v) => _setNestedSortOrder(v!),
                   ),
                   _CompactRadioTile<NestedSortOrder>(
                     title: NestedSortOrder.modifiedTime.settingsTitle,
                     value: NestedSortOrder.modifiedTime,
                     groupValue: _nestedSortOrder,
-                    onChanged: (v) => setState(() => _nestedSortOrder = v!),
+                    onChanged: (v) => _setNestedSortOrder(v!),
                   ),
                 ],
                 const _SectionDivider(),
@@ -237,14 +256,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   subtitle: '按修改时间展示最新 9 张',
                   value: AlbumCoverStyle.grid,
                   groupValue: _coverStyle,
-                  onChanged: (v) => setState(() => _coverStyle = v!),
+                  onChanged: (v) => _setCoverStyle(v!),
                 ),
                 _CompactRadioTile<AlbumCoverStyle>(
                   title: AlbumCoverStyle.single.settingsTitle,
                   subtitle: '长按夹内图片可设为封面',
                   value: AlbumCoverStyle.single,
                   groupValue: _coverStyle,
-                  onChanged: (v) => setState(() => _coverStyle = v!),
+                  onChanged: (v) => _setCoverStyle(v!),
                 ),
                 const _SectionDivider(),
                 _SectionTitle('导入图片模式'),
@@ -253,14 +272,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   subtitle: '从相册移入，保留文件时间',
                   value: ImportMode.cut,
                   groupValue: _importMode,
-                  onChanged: (v) => setState(() => _importMode = v!),
+                  onChanged: (v) => _setImportMode(v!),
                 ),
                 _CompactRadioTile<ImportMode>(
                   title: '复制',
                   subtitle: '保留相册原图，复制到表情包夹',
                   value: ImportMode.copy,
                   groupValue: _importMode,
-                  onChanged: (v) => setState(() => _importMode = v!),
+                  onChanged: (v) => _setImportMode(v!),
                 ),
                 if (Platform.isAndroid) ...[
                   const _SectionDivider(),
@@ -270,12 +289,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     title: const Text('自动添加 .nomedia'),
                     subtitle: const Text('避免被系统相册扫描'),
                     value: _autoNomedia,
-                    onChanged: (v) => setState(() => _autoNomedia = v),
+                    onChanged: _setAutoNomedia,
                   ),
                 ],
-                const SizedBox(height: 12),
-                FilledButton(onPressed: _save, child: const Text('保存设置')),
-                const SizedBox(height: 8),
+                const SizedBox(height: 16),
               ],
             ),
     );

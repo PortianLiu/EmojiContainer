@@ -60,19 +60,30 @@ jobs:
       - name: Build Android Release APK
         run: flutter build apk --release
 
-      - name: Package Windows Release
+      - name: Install 7-Zip and Inno Setup
+        run: |
+          choco install 7zip innosetup -y
+
+      - name: Package Windows portable (zip & 7z)
         run: |
           $TAG = "${{ github.ref_name }}"
           New-Item -ItemType Directory -Force -Path build/dist | Out-Null
           $zipPath = "build/dist/EmojiContainer_Win_$TAG.zip"
           if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
           Compress-Archive -Path "build/windows/x64/runner/Release/*" -DestinationPath $zipPath
+          7z a -t7z -mx=9 -mmt=on "build/dist/EmojiContainer_Win_$TAG.7z" "build/windows/x64/runner/Release/*"
+        shell: pwsh
+
+      - name: Build Windows installer with Inno Setup
+        run: |
+          $VERSION = "${{ github.ref_name }}".TrimStart('v')
+          $env:MY_APP_VERSION = $VERSION
+          iscc "EmojiContainer.iss"
         shell: pwsh
 
       - name: Rename APK
         run: |
           $TAG = "${{ github.ref_name }}"
-          New-Item -ItemType Directory -Force -Path build/dist | Out-Null
           Copy-Item "build/app/outputs/flutter-apk/app-release.apk" "build/dist/EmojiContainer_Android_$TAG.apk"
         shell: pwsh
 
@@ -81,11 +92,14 @@ jobs:
         with:
           files: |
             build/dist/EmojiContainer_Win_${{ github.ref_name }}.zip
+            build/dist/EmojiContainer_Win_${{ github.ref_name }}.7z
+            build/dist/EmojiContainer_Setup_x64_${{ github.ref_name }}.exe
             build/dist/EmojiContainer_Android_${{ github.ref_name }}.apk
           body: |
             ## EmojiContainer ${{ github.ref_name }}
 
-            - **Windows**：`EmojiContainer_Win_${{ github.ref_name }}.zip`（解压后运行 `emoji_container.exe`）
+            - **Windows 安装包**：`EmojiContainer_Setup_x64_${{ github.ref_name }}.exe`
+            - **Windows 便携版**：`EmojiContainer_Win_${{ github.ref_name }}.zip` / `.7z`
             - **Android**：`EmojiContainer_Android_${{ github.ref_name }}.apk`
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

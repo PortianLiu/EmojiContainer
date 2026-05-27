@@ -17,7 +17,11 @@ import 'services/album_group_service.dart';
 import 'services/emoji_delete_service.dart';
 import 'services/nomedia_service.dart';
 import 'services/preferences_service.dart';
+import 'services/share_import_service.dart';
 import 'services/storage_permission_service.dart';
+import 'widgets/share_receive_listener.dart';
+
+final _navigatorKey = GlobalKey<NavigatorState>();
 
 class EmojiContainerApp extends StatelessWidget {
   const EmojiContainerApp({super.key});
@@ -43,6 +47,7 @@ class EmojiContainerApp extends StatelessWidget {
             storagePermission: context.read<StoragePermissionService>(),
           ),
         ),
+        RepositoryProvider(create: (_) => ShareImportService()),
       ],
       child: MultiBlocProvider(
         providers: [
@@ -62,6 +67,7 @@ class EmojiContainerApp extends StatelessWidget {
           ),
         ],
         child: MaterialApp(
+          navigatorKey: _navigatorKey,
           title: '表情包管理器',
           debugShowCheckedModeBanner: false,
           theme: ThemeData(
@@ -72,7 +78,10 @@ class EmojiContainerApp extends StatelessWidget {
             useMaterial3: true,
             appBarTheme: const AppBarTheme(centerTitle: false),
           ),
-          home: const _AppShell(),
+          home: ShareReceiveListener(
+            navigatorKey: _navigatorKey,
+            child: const _AppShell(),
+          ),
         ),
       ),
     );

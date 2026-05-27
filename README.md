@@ -59,7 +59,11 @@ flutter run -d windows
 ### GitHub Actions
 
 - 工作流：`.github/workflows/build-and-release.yml`
-- 产物：`EmojiContainer_Win_vX.Y.zip`、`EmojiContainer_Android_vX.Y.apk`（发布到 GitHub Release）
+- 产物：
+  - `EmojiContainer_Setup_x64_v2.3.exe`（Inno Setup 安装包）
+  - `EmojiContainer_Win_v2.3.zip` / `.7z`（便携版）
+  - `EmojiContainer_Android_v2.3.apk`
+- 安装脚本：`EmojiContainer.iss`（由 CI 调用 `iscc` 编译）
 - 在仓库 **Settings → Secrets and variables → Actions** 添加：
 
 | Secret | 说明 |
@@ -79,9 +83,9 @@ flutter run -d windows
 
 - 流水线：`.workflow/tag-pipeline.yml`（需在仓库中启用 Gitee Go）
 - 在 **流水线 → 密钥/变量** 中配置与 GitHub 相同的四个变量名
-- 构建完成后可在制品库下载 `build/dist/` 下的 zip 与 apk
+- 构建完成后可在制品库下载 `build/dist/` 下的安装包、zip/7z 与 apk
 
-与 TodoMatrix 参考配置的差异：本项目**无 Inno Setup 安装包**，Windows 仅发布 zip 便携版。
+安装包由根目录 `EmojiContainer.iss` 生成（已适配本项目插件与 `emoji_container.exe`）。
 
 ## 技术栈
 
