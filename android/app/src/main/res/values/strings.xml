@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">表情包管理器</string>
+    <string name="share_target_label">保存到表情包</string>
+</resources>

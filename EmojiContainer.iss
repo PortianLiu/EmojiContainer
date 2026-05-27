@@ -30,7 +30,7 @@ PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=commandline
 OutputDir={#ProjectDir}\build\dist
 OutputBaseFilename=EmojiContainer_Setup_x64_v{#MyAppVersion}
-SetupIconFile={#ProjectDir}\assets\tray_icon.ico
+SetupIconFile={#ProjectDir}\assets\emoji_container.ico
 SolidCompression=yes
 WizardStyle=modern
 

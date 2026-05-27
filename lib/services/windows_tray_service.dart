@@ -30,7 +30,7 @@ class WindowsTrayService with TrayListener, WindowListener {
     trayManager.addListener(this);
     windowManager.addListener(this);
 
-    await trayManager.setIcon('assets/tray_icon.ico');
+    await trayManager.setIcon('assets/emoji_container.ico');
     await trayManager.setToolTip('表情包管理器');
 
     _initialized = true;
