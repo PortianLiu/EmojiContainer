@@ -26,7 +26,7 @@ stages:
             if ([string]::IsNullOrWhiteSpace($TAG)) { $TAG = "v$env:CI_BUILD_NUMBER" }
 
             Write-Host "=== 安装 Flutter ==="
-            git clone https://github.com/flutter/flutter.git -b stable --depth 1 C:\flutter
+            git clone https://github.com/flutter/flutter.git -b 3.44.0 --depth 1 C:\flutter
             $env:Path = "C:\flutter\bin;" + $env:Path
             flutter --version
             flutter config --no-analytics
