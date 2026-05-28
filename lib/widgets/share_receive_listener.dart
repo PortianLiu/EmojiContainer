@@ -37,8 +37,8 @@ class _ShareReceiveListenerState extends State<ShareReceiveListener>
   StreamSubscription<List<SharedMediaFile>>? _shareSub;
   List<String>? _pendingPaths;
   bool _handling = false;
-  int _retryCount = 0;
-  static const _maxRetries = 40;
+  bool _initialChecked = false;
+  bool _noRootNotified = false;
 
   @override
   void initState() {
@@ -48,7 +48,10 @@ class _ShareReceiveListenerState extends State<ShareReceiveListener>
 
     _shareSub =
         ReceiveSharingIntent.instance.getMediaStream().listen(_onSharedMedia);
-    _pollInitialShare();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkInitialShareOnce();
+    });
   }
 
   @override
@@ -60,24 +63,29 @@ class _ShareReceiveListenerState extends State<ShareReceiveListener>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && Platform.isAndroid) {
-      _pollInitialShare();
-      _scheduleRetry();
+    if (state == AppLifecycleState.resumed &&
+        Platform.isAndroid &&
+        _pendingPaths != null &&
+        !_handling) {
+      _tryHandlePending();
     }
   }
 
-  Future<void> _pollInitialShare() async {
-    for (var i = 0; i < 25; i++) {
-      if (!mounted) return;
-      try {
-        final media = await ReceiveSharingIntent.instance.getInitialMedia();
-        if (media.isNotEmpty) {
-          _onSharedMedia(media);
-          return;
-        }
-      } catch (_) {}
-      await Future.delayed(Duration(milliseconds: 80 + i * 40));
-    }
+  Future<void> _checkInitialShareOnce() async {
+    if (_initialChecked || !Platform.isAndroid) return;
+    _initialChecked = true;
+
+    await Future.delayed(const Duration(milliseconds: 400));
+    if (!mounted) return;
+
+    try {
+      final media = await ReceiveSharingIntent.instance.getInitialMedia();
+      if (media.isNotEmpty) {
+        _onSharedMedia(media);
+      } else {
+        await ReceiveSharingIntent.instance.reset();
+      }
+    } catch (_) {}
   }
 
   void _onSharedMedia(List<SharedMediaFile> files) {
@@ -89,46 +97,43 @@ class _ShareReceiveListenerState extends State<ShareReceiveListener>
     if (paths.isEmpty) return;
 
     _pendingPaths = paths;
-    _retryCount = 0;
-    _scheduleRetry(immediate: true);
+    _noRootNotified = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _tryHandlePending();
+    });
   }
 
   bool _isImageMedia(SharedMediaFile file) {
     if (file.type == SharedMediaType.image) return true;
-    final path = file.path.toLowerCase();
-    return isImageFile(path);
-  }
-
-  void _scheduleRetry({bool immediate = false}) {
-    if (_pendingPaths == null || _handling) return;
-    final delay = immediate
-        ? Duration.zero
-        : Duration(milliseconds: 150 + _retryCount * 80);
-    Future.delayed(delay, () {
-      if (mounted) _tryHandlePending();
-    });
+    return isImageFile(file.path.toLowerCase());
   }
 
   void _tryHandlePending() {
     if (!Platform.isAndroid || _handling || _pendingPaths == null) return;
 
     final rootState = context.read<RootDirectoryCubit>().state;
+
+    if (rootState.status == RootDirectoryStatus.loading ||
+        rootState.status == RootDirectoryStatus.initial) {
+      return;
+    }
+
     if (!rootState.hasRoot || rootState.path == null) {
-      if (_retryCount == 0) {
-        _showSnack('请先设置表情包总目录，再接收分享的图片');
+      if (!_noRootNotified) {
+        _noRootNotified = true;
+        _showSnack('请先在应用内设置表情包总目录，再使用分享功能');
       }
-      _retryLater();
+      _pendingPaths = null;
+      unawaited(ReceiveSharingIntent.instance.reset());
       return;
     }
 
     if (rootState.status != RootDirectoryStatus.ready) {
-      _retryLater();
       return;
     }
 
     final nav = widget.navigatorKey.currentState;
     if (nav == null || !nav.mounted) {
-      _retryLater();
       return;
     }
 
@@ -145,26 +150,12 @@ class _ShareReceiveListenerState extends State<ShareReceiveListener>
     });
   }
 
-  void _retryLater() {
-    if (_pendingPaths == null) return;
-    if (_retryCount >= _maxRetries) {
-      _showSnack('无法打开分享界面，请从桌面启动应用后重试');
-      _pendingPaths = null;
-      return;
-    }
-    _retryCount++;
-    _scheduleRetry();
-  }
-
   Future<void> _showAlbumPicker(List<String> paths, String rootPath) async {
     final nav = widget.navigatorKey.currentState;
-    if (nav == null || !nav.mounted) {
-      _pendingPaths = paths;
-      _retryLater();
-      return;
-    }
+    if (nav == null || !nav.mounted) return;
 
-    final overlayContext = nav.overlay?.context ?? nav.context;
+    final overlayContext = nav.overlay?.context;
+    if (overlayContext == null || !overlayContext.mounted) return;
 
     List<EmojiAlbum> albums;
     try {
@@ -173,23 +164,18 @@ class _ShareReceiveListenerState extends State<ShareReceiveListener>
             orderService: context.read<AlbumOrderService>(),
           );
     } catch (e) {
-      _pendingPaths = paths;
       _showSnack('无法加载表情包夹：$e');
-      _retryLater();
+      await ReceiveSharingIntent.instance.reset();
       return;
     }
 
     if (albums.isEmpty) {
-      _pendingPaths = null;
       _showSnack('请先创建表情包夹，再接收分享的图片');
+      await ReceiveSharingIntent.instance.reset();
       return;
     }
 
-    if (!overlayContext.mounted) {
-      _pendingPaths = paths;
-      _retryLater();
-      return;
-    }
+    if (!overlayContext.mounted) return;
 
     final selected = await showModalBottomSheet<EmojiAlbum>(
       context: overlayContext,
@@ -214,8 +200,8 @@ class _ShareReceiveListenerState extends State<ShareReceiveListener>
           targetPath: selected.path,
         );
     if (writeErr != null) {
-      _pendingPaths = paths;
       _showSnack(writeErr);
+      await ReceiveSharingIntent.instance.reset();
       return;
     }
 
@@ -239,11 +225,11 @@ class _ShareReceiveListenerState extends State<ShareReceiveListener>
       _showSnack('已将 ${result.importedCount} 张图片添加到「${selected.name}」');
       await ReceiveSharingIntent.instance.reset();
     } on ShareImportException catch (e) {
-      _pendingPaths = paths;
       _showSnack(e.message);
+      await ReceiveSharingIntent.instance.reset();
     } catch (e) {
-      _pendingPaths = paths;
       _showSnack('导入失败：$e');
+      await ReceiveSharingIntent.instance.reset();
     }
   }
 
@@ -261,14 +247,11 @@ class _ShareReceiveListenerState extends State<ShareReceiveListener>
     return BlocListener<RootDirectoryCubit, RootDirectoryState>(
       listenWhen: (prev, curr) =>
           _pendingPaths != null &&
-          curr.hasRoot &&
           curr.status == RootDirectoryStatus.ready &&
+          curr.hasRoot &&
           (prev.status != RootDirectoryStatus.ready ||
               prev.path != curr.path),
-      listener: (_, __) {
-        _retryCount = 0;
-        _scheduleRetry(immediate: true);
-      },
+      listener: (_, __) => _tryHandlePending(),
       child: widget.child,
     );
   }

@@ -181,6 +181,9 @@ class AlbumsCubit extends Cubit<AlbumsState> {
 
   void _warmCoverThumbs(List<EmojiAlbum> albums, AlbumCoverStyle style) {
     if (albums.isEmpty) return;
-    unawaited(_coverThumbs.warmAlbums(albums, coverStyle: style));
+    Future.delayed(const Duration(seconds: 3), () {
+      if (isClosed) return;
+      unawaited(_coverThumbs.warmAlbums(albums, coverStyle: style));
+    });
   }
 }
