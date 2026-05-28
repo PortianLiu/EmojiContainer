@@ -1,8 +1,11 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'dart:async';
 import 'dart:io';
+import '../../models/emoji_album.dart';
 import '../../services/album_cache_service.dart';
 import '../../services/album_cover_service.dart';
+import '../../services/cover_thumb_cache_service.dart';
 import '../../services/album_group_service.dart';
 import '../../services/emoji_repository.dart';
 import '../../services/nomedia_service.dart';
@@ -17,12 +20,14 @@ class AlbumsCubit extends Cubit<AlbumsState> {
     NomediaService? nomediaService,
     AlbumGroupService? groupService,
     AlbumOrderService? orderService,
+    CoverThumbCacheService? coverThumbCache,
   })  : _repository = repository,
         _cache = cacheService ?? AlbumCacheService(),
         _preferences = preferences ?? PreferencesService(),
         _nomedia = nomediaService ?? NomediaService(),
         _groupService = groupService ?? AlbumGroupService(),
         _orderService = orderService ?? AlbumOrderService(),
+        _coverThumbs = coverThumbCache ?? CoverThumbCacheService(),
         super(const AlbumsState());
 
   final EmojiRepository _repository;
@@ -31,6 +36,7 @@ class AlbumsCubit extends Cubit<AlbumsState> {
   final NomediaService _nomedia;
   final AlbumGroupService _groupService;
   final AlbumOrderService _orderService;
+  final CoverThumbCacheService _coverThumbs;
   String? _loadingRoot;
   bool _scanInProgress = false;
 
@@ -56,6 +62,7 @@ class AlbumsCubit extends Cubit<AlbumsState> {
             isRefreshing: true,
           ),
         );
+        _warmCoverThumbs(cached.expand((g) => g.albums).toList(), coverStyle);
       } else if (state.status != AlbumsStatus.loaded || state.groups.isEmpty) {
         emit(AlbumsState(
           status: AlbumsStatus.loading,
@@ -95,6 +102,10 @@ class AlbumsCubit extends Cubit<AlbumsState> {
               isRefreshing: false,
             ),
           );
+          _warmCoverThumbs(
+            [nestedRoot.toAlbum(), ...nestedRoot.subAlbums],
+            coverStyle,
+          );
         }
       } else {
         final groups = await _repository.loadGroupedAlbums(
@@ -120,6 +131,10 @@ class AlbumsCubit extends Cubit<AlbumsState> {
               fromCache: false,
               isRefreshing: false,
             ),
+          );
+          _warmCoverThumbs(
+            groups.expand((g) => g.albums).toList(),
+            coverStyle,
           );
         }
       }
@@ -162,5 +177,10 @@ class AlbumsCubit extends Cubit<AlbumsState> {
     _scanInProgress = false;
     emit(const AlbumsState());
     _cache.clear();
+  }
+
+  void _warmCoverThumbs(List<EmojiAlbum> albums, AlbumCoverStyle style) {
+    if (albums.isEmpty) return;
+    unawaited(_coverThumbs.warmAlbums(albums, coverStyle: style));
   }
 }

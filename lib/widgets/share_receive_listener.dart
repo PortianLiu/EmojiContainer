@@ -32,25 +32,52 @@ class ShareReceiveListener extends StatefulWidget {
   State<ShareReceiveListener> createState() => _ShareReceiveListenerState();
 }
 
-class _ShareReceiveListenerState extends State<ShareReceiveListener> {
+class _ShareReceiveListenerState extends State<ShareReceiveListener>
+    with WidgetsBindingObserver {
   StreamSubscription<List<SharedMediaFile>>? _shareSub;
   List<String>? _pendingPaths;
   bool _handling = false;
+  int _retryCount = 0;
+  static const _maxRetries = 40;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     if (!Platform.isAndroid) return;
 
-    ReceiveSharingIntent.instance.getInitialMedia().then(_onSharedMedia);
     _shareSub =
         ReceiveSharingIntent.instance.getMediaStream().listen(_onSharedMedia);
+    _pollInitialShare();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _shareSub?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && Platform.isAndroid) {
+      _pollInitialShare();
+      _scheduleRetry();
+    }
+  }
+
+  Future<void> _pollInitialShare() async {
+    for (var i = 0; i < 25; i++) {
+      if (!mounted) return;
+      try {
+        final media = await ReceiveSharingIntent.instance.getInitialMedia();
+        if (media.isNotEmpty) {
+          _onSharedMedia(media);
+          return;
+        }
+      } catch (_) {}
+      await Future.delayed(Duration(milliseconds: 80 + i * 40));
+    }
   }
 
   void _onSharedMedia(List<SharedMediaFile> files) {
@@ -62,7 +89,8 @@ class _ShareReceiveListenerState extends State<ShareReceiveListener> {
     if (paths.isEmpty) return;
 
     _pendingPaths = paths;
-    _tryHandlePending();
+    _retryCount = 0;
+    _scheduleRetry(immediate: true);
   }
 
   bool _isImageMedia(SharedMediaFile file) {
@@ -71,34 +99,72 @@ class _ShareReceiveListenerState extends State<ShareReceiveListener> {
     return isImageFile(path);
   }
 
+  void _scheduleRetry({bool immediate = false}) {
+    if (_pendingPaths == null || _handling) return;
+    final delay = immediate
+        ? Duration.zero
+        : Duration(milliseconds: 150 + _retryCount * 80);
+    Future.delayed(delay, () {
+      if (mounted) _tryHandlePending();
+    });
+  }
+
   void _tryHandlePending() {
     if (!Platform.isAndroid || _handling || _pendingPaths == null) return;
 
     final rootState = context.read<RootDirectoryCubit>().state;
-    if (!rootState.hasRoot ||
-        rootState.status != RootDirectoryStatus.ready ||
-        rootState.path == null) {
+    if (!rootState.hasRoot || rootState.path == null) {
+      if (_retryCount == 0) {
+        _showSnack('请先设置表情包总目录，再接收分享的图片');
+      }
+      _retryLater();
       return;
     }
 
-    final paths = _pendingPaths!;
+    if (rootState.status != RootDirectoryStatus.ready) {
+      _retryLater();
+      return;
+    }
+
+    final nav = widget.navigatorKey.currentState;
+    if (nav == null || !nav.mounted) {
+      _retryLater();
+      return;
+    }
+
+    final paths = List<String>.from(_pendingPaths!);
     _pendingPaths = null;
     _handling = true;
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) {
+      try {
+        await _showAlbumPicker(paths, rootState.path!);
+      } finally {
         _handling = false;
-        return;
       }
-      await _showAlbumPicker(paths, rootState.path!);
-      _handling = false;
-      ReceiveSharingIntent.instance.reset();
     });
   }
 
+  void _retryLater() {
+    if (_pendingPaths == null) return;
+    if (_retryCount >= _maxRetries) {
+      _showSnack('无法打开分享界面，请从桌面启动应用后重试');
+      _pendingPaths = null;
+      return;
+    }
+    _retryCount++;
+    _scheduleRetry();
+  }
+
   Future<void> _showAlbumPicker(List<String> paths, String rootPath) async {
-    final navContext = widget.navigatorKey.currentContext;
-    if (navContext == null || !navContext.mounted) return;
+    final nav = widget.navigatorKey.currentState;
+    if (nav == null || !nav.mounted) {
+      _pendingPaths = paths;
+      _retryLater();
+      return;
+    }
+
+    final overlayContext = nav.overlay?.context ?? nav.context;
 
     List<EmojiAlbum> albums;
     try {
@@ -107,40 +173,51 @@ class _ShareReceiveListenerState extends State<ShareReceiveListener> {
             orderService: context.read<AlbumOrderService>(),
           );
     } catch (e) {
+      _pendingPaths = paths;
       _showSnack('无法加载表情包夹：$e');
+      _retryLater();
       return;
     }
 
     if (albums.isEmpty) {
+      _pendingPaths = null;
       _showSnack('请先创建表情包夹，再接收分享的图片');
       return;
     }
 
-    if (!navContext.mounted) return;
+    if (!overlayContext.mounted) {
+      _pendingPaths = paths;
+      _retryLater();
+      return;
+    }
 
     final selected = await showModalBottomSheet<EmojiAlbum>(
-      context: navContext,
+      context: overlayContext,
       isScrollControlled: true,
       showDragHandle: true,
+      useRootNavigator: true,
       builder: (ctx) => _ShareAlbumPickerSheet(
         albums: albums,
         imageCount: paths.length,
       ),
     );
 
-    if (selected == null || !mounted) return;
-
-    final storage = context.read<StoragePermissionService>();
-    final writeErr = await storage.ensureWriteAccess(
-      navContext,
-      targetPath: selected.path,
-    );
-    if (writeErr != null) {
-      _showSnack(writeErr);
+    if (selected == null) {
+      await ReceiveSharingIntent.instance.reset();
       return;
     }
 
     if (!mounted) return;
+
+    final writeErr = await context.read<StoragePermissionService>().ensureWriteAccess(
+          overlayContext,
+          targetPath: selected.path,
+        );
+    if (writeErr != null) {
+      _pendingPaths = paths;
+      _showSnack(writeErr);
+      return;
+    }
 
     try {
       final result = await context.read<ShareImportService>().importPaths(
@@ -155,18 +232,24 @@ class _ShareReceiveListenerState extends State<ShareReceiveListener> {
             .ensureNomediaForDirectory(selected.path);
       }
 
-      context.read<AlbumsCubit>().load(rootPath);
+      if (mounted) {
+        context.read<AlbumsCubit>().load(rootPath);
+      }
 
       _showSnack('已将 ${result.importedCount} 张图片添加到「${selected.name}」');
+      await ReceiveSharingIntent.instance.reset();
     } on ShareImportException catch (e) {
+      _pendingPaths = paths;
       _showSnack(e.message);
     } catch (e) {
+      _pendingPaths = paths;
       _showSnack('导入失败：$e');
     }
   }
 
   void _showSnack(String message) {
-    final ctx = widget.navigatorKey.currentContext;
+    final nav = widget.navigatorKey.currentState;
+    final ctx = nav?.overlay?.context ?? nav?.context;
     if (ctx == null || !ctx.mounted) return;
     ScaffoldMessenger.of(ctx).showSnackBar(
       SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
@@ -177,10 +260,15 @@ class _ShareReceiveListenerState extends State<ShareReceiveListener> {
   Widget build(BuildContext context) {
     return BlocListener<RootDirectoryCubit, RootDirectoryState>(
       listenWhen: (prev, curr) =>
+          _pendingPaths != null &&
           curr.hasRoot &&
           curr.status == RootDirectoryStatus.ready &&
-          _pendingPaths != null,
-      listener: (_, __) => _tryHandlePending(),
+          (prev.status != RootDirectoryStatus.ready ||
+              prev.path != curr.path),
+      listener: (_, __) {
+        _retryCount = 0;
+        _scheduleRetry(immediate: true);
+      },
       child: widget.child,
     );
   }

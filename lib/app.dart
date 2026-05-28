@@ -17,11 +17,23 @@ import 'services/album_group_service.dart';
 import 'services/emoji_delete_service.dart';
 import 'services/nomedia_service.dart';
 import 'services/preferences_service.dart';
+import 'services/cover_thumb_cache_service.dart';
 import 'services/share_import_service.dart';
 import 'services/storage_permission_service.dart';
 import 'widgets/share_receive_listener.dart';
 
 final _navigatorKey = GlobalKey<NavigatorState>();
+
+ThemeData _buildTheme(Brightness brightness) {
+  return ThemeData(
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: const Color(0xFF5C6BC0),
+      brightness: brightness,
+    ),
+    useMaterial3: true,
+    appBarTheme: const AppBarTheme(centerTitle: false),
+  );
+}
 
 class EmojiContainerApp extends StatelessWidget {
   const EmojiContainerApp({super.key});
@@ -48,6 +60,7 @@ class EmojiContainerApp extends StatelessWidget {
           ),
         ),
         RepositoryProvider(create: (_) => ShareImportService()),
+        RepositoryProvider(create: (_) => CoverThumbCacheService()),
       ],
       child: MultiBlocProvider(
         providers: [
@@ -63,6 +76,7 @@ class EmojiContainerApp extends StatelessWidget {
               nomediaService: context.read<NomediaService>(),
               groupService: context.read<AlbumGroupService>(),
               orderService: context.read<AlbumOrderService>(),
+              coverThumbCache: context.read<CoverThumbCacheService>(),
             ),
           ),
         ],
@@ -70,18 +84,14 @@ class EmojiContainerApp extends StatelessWidget {
           navigatorKey: _navigatorKey,
           title: '表情包管理器',
           debugShowCheckedModeBanner: false,
-          theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFF5C6BC0),
-              brightness: Brightness.light,
-            ),
-            useMaterial3: true,
-            appBarTheme: const AppBarTheme(centerTitle: false),
-          ),
-          home: ShareReceiveListener(
+          theme: _buildTheme(Brightness.light),
+          darkTheme: _buildTheme(Brightness.dark),
+          themeMode: ThemeMode.system,
+          builder: (context, child) => ShareReceiveListener(
             navigatorKey: _navigatorKey,
-            child: const _AppShell(),
+            child: child ?? const SizedBox.shrink(),
           ),
+          home: const _AppShell(),
         ),
       ),
     );
