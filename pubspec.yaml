@@ -62,6 +62,7 @@ dependencies:
   receive_sharing_intent: ^1.8.1
   image: ^4.8.0
   crypto: ^3.0.7
+  exif: ^3.3.0
 
 
 

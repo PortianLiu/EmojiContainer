@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import 'emoji_constants.dart';
+import 'image_metadata_service.dart';
 
 class ShareImportResult {
   const ShareImportResult({required this.importedCount});
@@ -11,7 +12,10 @@ class ShareImportResult {
 }
 
 class ShareImportService {
-  ShareImportService();
+  ShareImportService({ImageMetadataService? metadata})
+      : _metadata = metadata ?? ImageMetadataService();
+
+  final ImageMetadataService _metadata;
 
   Future<ShareImportResult> importPaths({
     required List<String> sourcePaths,
@@ -47,17 +51,15 @@ class ShareImportService {
   }
 
   Future<bool> _importOne(String source, String albumPath) async {
-    final fileName = _resolveFileName(source);
-    final dest = await _uniqueDestPath(albumPath, fileName);
-    final srcFile = File(source);
-
-    if (await srcFile.exists()) {
-      await srcFile.copy(dest);
-    } else if (source.startsWith('content://')) {
+    final srcFile = await _openSource(source);
+    if (srcFile == null) {
       throw ShareImportException('无法读取分享的图片');
-    } else {
-      throw ShareImportException('文件不存在：$source');
     }
+
+    final fileName = _resolveFileName(source, srcFile.path);
+    final dest = await _uniqueDestPath(albumPath, fileName);
+
+    await _metadata.writePreservingBytes(source: srcFile, destPath: dest);
 
     final out = File(dest);
     if (!await out.exists() || await out.length() <= 0) {
@@ -67,16 +69,29 @@ class ShareImportService {
       return false;
     }
 
-    try {
-      final modified = await srcFile.lastModified();
-      await out.setLastModified(modified);
-    } catch (_) {}
-
     return true;
   }
 
-  String _resolveFileName(String source) {
+  /// 分享插件会把内容复制到临时文件；少数机型仍可能是 content URI。
+  Future<File?> _openSource(String source) async {
+    final direct = File(source);
+    if (await direct.exists()) return direct;
+
+    if (source.startsWith('content://')) {
+      return null;
+    }
+
+    final stripped = source.replaceFirst('file://', '');
+    final file = File(stripped);
+    if (await file.exists()) return file;
+    return null;
+  }
+
+  String _resolveFileName(String source, String resolvedPath) {
     var name = p.basename(source.split('?').first);
+    if (name.isEmpty || name == '/' || !name.contains('.')) {
+      name = p.basename(resolvedPath);
+    }
     if (name.isEmpty || name == '/') {
       name = 'shared_${DateTime.now().millisecondsSinceEpoch}.jpg';
     }
@@ -84,8 +99,8 @@ class ShareImportService {
       name = '$name.jpg';
     }
     if (!isImageFile(name)) {
-      final ext = p.extension(name);
-      if (ext.isEmpty) name = '$name.jpg';
+      final ext = p.extension(resolvedPath);
+      if (ext.isNotEmpty) name = '${p.basenameWithoutExtension(name)}$ext';
     }
     return name;
   }

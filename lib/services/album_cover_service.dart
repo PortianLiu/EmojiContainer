@@ -17,12 +17,23 @@ class AlbumCoverService {
   List<String> sortedThumbs(EmojiAlbum album, {int max = 9}) {
     final paths = List<String>.from(album.emojiPaths);
     sortPathsByTimeDescSync(paths);
-    return paths.take(max).toList();
+    return paths.where(_pathExists).take(max).toList();
   }
 
   String? defaultCoverPath(EmojiAlbum album) {
     final sorted = sortedThumbs(album, max: 1);
-    return sorted.isEmpty ? album.coverPath : sorted.first;
+    if (sorted.isNotEmpty) return sorted.first;
+    final cover = album.coverPath;
+    if (cover != null && _pathExists(cover)) return cover;
+    return null;
+  }
+
+  bool _pathExists(String path) {
+    try {
+      return File(path).existsSync();
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<String?> resolveSingleCover(EmojiAlbum album) async {

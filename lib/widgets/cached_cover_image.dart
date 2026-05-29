@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -24,6 +26,8 @@ class CachedCoverImage extends StatefulWidget {
 
 class _CachedCoverImageState extends State<CachedCoverImage> {
   String? _displayPath;
+  bool _sourceMissing = false;
+  bool _generating = false;
 
   @override
   void initState() {
@@ -42,6 +46,18 @@ class _CachedCoverImageState extends State<CachedCoverImage> {
   Future<void> _resolve() async {
     final source = widget.sourcePath;
 
+    if (!_fileExists(source)) {
+      if (mounted) {
+        setState(() {
+          _sourceMissing = true;
+          _displayPath = null;
+        });
+      }
+      return;
+    }
+
+    _sourceMissing = false;
+
     if (shouldSkipCoverThumbCache(source)) {
       if (mounted) setState(() => _displayPath = source);
       return;
@@ -51,15 +67,47 @@ class _CachedCoverImageState extends State<CachedCoverImage> {
     final cached = await cache.cachedThumbPath(source);
     if (!mounted) return;
     setState(() => _displayPath = cached ?? source);
+
+    if (cached == null && !_generating) {
+      _generating = true;
+      final thumb = await cache.ensureThumb(source);
+      _generating = false;
+      if (!mounted || thumb == null) return;
+      setState(() => _displayPath = thumb);
+    }
+  }
+
+  bool _fileExists(String path) {
+    try {
+      return File(path).existsSync();
+    } catch (_) {
+      return false;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_sourceMissing) {
+      return Center(
+        child: Icon(
+          Icons.image_not_supported_outlined,
+          size: widget.decodeSide * 0.35,
+          color: Theme.of(context)
+              .colorScheme
+              .onSurfaceVariant
+              .withValues(alpha: 0.45),
+        ),
+      );
+    }
+
     final path = _displayPath ?? widget.sourcePath;
     return LazyFileImage(
+      key: ValueKey(path),
       path: path,
       decodeSide: widget.decodeSide,
       fit: widget.fit,
+      fallbackPath:
+          path != widget.sourcePath ? widget.sourcePath : null,
     );
   }
 }
