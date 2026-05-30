@@ -48,7 +48,7 @@ flutter run -d windows
 
 ### Android / Gradle
 
-- 使用本地 Gradle：`A:\WorkSpace\AllSDK\Gradle\user_home`（见 `android/gradle.properties`、`gradlew.bat`）
+- 本地可选：设置环境变量 `GRADLE_USER_HOME=A:\WorkSpace\AllSDK\Gradle\user_home` 使用自建 Gradle 缓存（勿写入仓库，CI 使用默认路径）
 - `gradlew.bat` 请保持 **ASCII 注释**（避免 CMD 在 GBK 下把中文当成命令执行）
 - Release 签名：复制 `android/key.properties.example` 为 `android/key.properties` 并填写 JKS 信息
 
