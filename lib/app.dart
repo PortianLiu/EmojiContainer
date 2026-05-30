@@ -12,6 +12,7 @@ import 'services/camera_export_store.dart';
 import 'services/emoji_import_service.dart';
 import 'services/emoji_repository.dart';
 import 'services/emoji_send_service.dart';
+import 'services/album_cache_service.dart';
 import 'services/album_cover_service.dart';
 import 'services/album_group_service.dart';
 import 'services/emoji_delete_service.dart';
