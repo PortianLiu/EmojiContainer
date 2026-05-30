@@ -30,34 +30,43 @@ jobs:
           cache: true
 
       - name: Install dependencies
+        env:
+          PUB_CACHE: ${{ github.workspace }}\.pub-cache
         run: flutter pub get
 
       - name: Restore Android keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          $BASE64_CONTENT = "${{ secrets.ANDROID_KEYSTORE_BASE64 }}"
-          if ([string]::IsNullOrWhiteSpace($BASE64_CONTENT)) {
+          if ([string]::IsNullOrWhiteSpace($env:ANDROID_KEYSTORE_BASE64)) {
             throw "Missing secret ANDROID_KEYSTORE_BASE64"
           }
-          $BASE64_CONTENT | Out-File -FilePath keystore_base64_temp.txt -Encoding ASCII
-          certutil -decode keystore_base64_temp.txt android/app/emoji-container-key.jks
-          Remove-Item keystore_base64_temp.txt
+          $bytes = [Convert]::FromBase64String($env:ANDROID_KEYSTORE_BASE64.Trim())
+          [IO.File]::WriteAllBytes("$PWD\android\app\emoji-container-key.jks", $bytes)
         shell: pwsh
 
       - name: Generate Android key.properties
+        env:
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
-          $KEY_PROPS_CONTENT = @"
-          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
-          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
-          storeFile=emoji-container-key.jks
-          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          "@
-          $KEY_PROPS_CONTENT | Out-File -FilePath android/key.properties -Encoding ASCII
+          @(
+            "keyAlias=$env:ANDROID_KEY_ALIAS"
+            "keyPassword=$env:ANDROID_KEY_PASSWORD"
+            "storeFile=emoji-container-key.jks"
+            "storePassword=$env:ANDROID_KEYSTORE_PASSWORD"
+          ) | Set-Content -Path android/key.properties -Encoding Ascii
         shell: pwsh
 
       - name: Build Windows Release
+        env:
+          PUB_CACHE: ${{ github.workspace }}\.pub-cache
         run: flutter build windows --release
 
       - name: Build Android Release APK
+        env:
+          PUB_CACHE: ${{ github.workspace }}\.pub-cache
         run: flutter build apk --release
 
       - name: Install 7-Zip and Inno Setup
