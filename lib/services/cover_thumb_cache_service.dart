@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
@@ -12,8 +11,9 @@ import 'album_cover_service.dart';
 import 'emoji_constants.dart';
 import 'preferences_service.dart';
 
-/// 封面缩略图磁盘缓存（低分辨率 JPEG），加快首屏绘制。
-/// GIF/WebP 动图不缓存，直接读原文件首帧。
+/// 封面缩略图磁盘缓存（约 240px），加快首屏绘制。
+/// 不透明图用 JPEG；含透明通道的 PNG 用 PNG 缓存，避免白底。
+/// GIF/WebP 动图不生成缓存，直接读原文件。
 class CoverThumbCacheService {
   CoverThumbCacheService({AlbumCoverService? coverService})
       : _coverService = coverService ?? AlbumCoverService();
@@ -23,24 +23,42 @@ class CoverThumbCacheService {
   static const _jpegQuality = 85;
   static const _maxWarmImages = 48;
   static const _warmBatchSize = 2;
+  static const _thumbSubdir = 'cover_thumbs';
 
   bool _warming = false;
+  bool _legacyCleaned = false;
 
+  /// 可再生的缩略图放在 cache 目录，系统可清理；列表 JSON 仍在 documents。
   Future<Directory> _thumbDir() async {
-    final base = await getApplicationDocumentsDirectory();
-    final dir = Directory(p.join(base.path, 'cover_thumbs'));
+    if (!_legacyCleaned) {
+      _legacyCleaned = true;
+      await _removeLegacyDocumentsThumbDir();
+    }
+    final base = await getApplicationCacheDirectory();
+    final dir = Directory(p.join(base.path, _thumbSubdir));
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
     return dir;
   }
 
-  String _fileName(String sourcePath, DateTime modified) {
-    final digest = sha1.convert(utf8.encode(sourcePath)).toString();
-    return '${digest}_${modified.millisecondsSinceEpoch}.jpg';
+  Future<void> _removeLegacyDocumentsThumbDir() async {
+    try {
+      final doc = await getApplicationDocumentsDirectory();
+      final legacy = Directory(p.join(doc.path, _thumbSubdir));
+      if (await legacy.exists()) {
+        await legacy.delete(recursive: true);
+      }
+    } catch (_) {}
   }
 
-  /// 若缓存仍与源文件修改时间一致则返回缩略图路径。
+  String _fileName(String sourcePath, DateTime modified, {required bool png}) {
+    final digest = sha1.convert(utf8.encode(sourcePath)).toString();
+    final ext = png ? 'png' : 'jpg';
+    return '${digest}_${modified.millisecondsSinceEpoch}.$ext';
+  }
+
+  /// 缓存有效条件：存在与源文件 **lastModified** 匹配的缩略图文件。
   Future<String?> cachedThumbPath(String sourcePath) async {
     if (shouldSkipCoverThumbCache(sourcePath)) return null;
 
@@ -52,14 +70,17 @@ class CoverThumbCacheService {
     } catch (_) {
       return null;
     }
-    final file = File(
-      p.join((await _thumbDir()).path, _fileName(sourcePath, modified)),
-    );
-    if (await file.exists()) return file.path;
+
+    final dir = await _thumbDir();
+    for (final ext in ['jpg', 'png']) {
+      final file = File(
+        p.join(dir.path, _fileName(sourcePath, modified, png: ext == 'png')),
+      );
+      if (await file.exists()) return file.path;
+    }
     return null;
   }
 
-  /// 在 isolate 中生成缩略图，避免阻塞 UI / OOM。
   Future<String?> ensureThumb(String sourcePath) async {
     if (shouldSkipCoverThumbCache(sourcePath)) return null;
 
@@ -76,22 +97,18 @@ class CoverThumbCacheService {
       return null;
     }
 
-    final outPath = p.join(
-      (await _thumbDir()).path,
-      _fileName(sourcePath, modified),
-    );
-
     try {
-      final ok = await compute(
+      final result = await compute(
         _generateThumbIsolate,
-        _ThumbJob(
-          sourcePath: sourcePath,
-          outPath: outPath,
-          maxSide: _maxSide,
-          quality: _jpegQuality,
-        ),
+        _ThumbJob(sourcePath: sourcePath, maxSide: _maxSide, quality: _jpegQuality),
       );
-      if (!ok) return null;
+      if (result == null) return null;
+
+      final outPath = p.join(
+        (await _thumbDir()).path,
+        _fileName(sourcePath, modified, png: result.usePng),
+      );
+      await File(outPath).writeAsBytes(result.bytes);
       await _purgeStaleForSource(sourcePath, keep: outPath);
       return outPath;
     } catch (_) {
@@ -99,7 +116,6 @@ class CoverThumbCacheService {
     }
   }
 
-  /// 后台预热（低优先级、限数量），勿在首屏同步调用。
   Future<void> warmAlbums(
     List<EmojiAlbum> albums, {
     required AlbumCoverStyle coverStyle,
@@ -134,6 +150,25 @@ class CoverThumbCacheService {
     }
   }
 
+  /// 清除全部封面缩略图（设置页「清理缓存」会调用）。
+  Future<int> clearAll() async {
+    _warming = false;
+    var count = 0;
+    await _removeLegacyDocumentsThumbDir();
+    try {
+      final dir = await _thumbDir();
+      if (await dir.exists()) {
+        await for (final e in dir.list()) {
+          if (e is File) {
+            await e.delete();
+            count++;
+          }
+        }
+      }
+    } catch (_) {}
+    return count;
+  }
+
   Future<void> _purgeStaleForSource(String sourcePath, {required String keep}) async {
     final digest = sha1.convert(utf8.encode(sourcePath)).toString();
     final dir = await _thumbDir();
@@ -152,67 +187,54 @@ class CoverThumbCacheService {
 class _ThumbJob {
   const _ThumbJob({
     required this.sourcePath,
-    required this.outPath,
     required this.maxSide,
     required this.quality,
   });
 
   final String sourcePath;
-  final String outPath;
   final int maxSide;
   final int quality;
 }
 
-/// 顶层函数供 [compute] 调用。
-bool _generateThumbIsolate(_ThumbJob job) {
+class _ThumbResult {
+  const _ThumbResult({required this.bytes, required this.usePng});
+
+  final Uint8List bytes;
+  final bool usePng;
+}
+
+_ThumbResult? _generateThumbIsolate(_ThumbJob job) {
   try {
     final bytes = File(job.sourcePath).readAsBytesSync();
     final decoded = img.decodeImage(bytes);
-    if (decoded == null) return false;
+    if (decoded == null) return null;
 
-    var image = _prepareForJpeg(decoded);
+    final usePng = decoded.hasAlpha;
+    img.Image work = decoded;
 
-    final w = image.width;
-    final h = image.height;
+    if (work.numChannels == 1 || work.format == img.Format.uint1) {
+      work = work.convert(numChannels: 3, format: img.Format.uint8);
+    } else if (!usePng && work.numChannels != 3) {
+      work = work.convert(numChannels: 3, format: img.Format.uint8);
+    }
+
+    final w = work.width;
+    final h = work.height;
     final scale = job.maxSide / (w > h ? w : h);
     final thumb = scale >= 1
-        ? image
+        ? work
         : img.copyResize(
-            image,
+            work,
             width: (w * scale).round(),
             height: (h * scale).round(),
             interpolation: img.Interpolation.linear,
           );
 
-    File(job.outPath).writeAsBytesSync(
-      img.encodeJpg(thumb, quality: job.quality),
-    );
-    return true;
+    final outBytes = usePng
+        ? img.encodePng(thumb)
+        : img.encodeJpg(thumb, quality: job.quality);
+    return _ThumbResult(bytes: Uint8List.fromList(outBytes), usePng: usePng);
   } catch (_) {
-    return false;
+    return null;
   }
-}
-
-img.Image _prepareForJpeg(img.Image decoded) {
-  img.Image work = decoded;
-
-  if (work.numChannels == 1 || work.format == img.Format.uint1) {
-    work = work.convert(numChannels: 3, format: img.Format.uint8);
-  }
-
-  if (work.hasAlpha) {
-    final flat = img.Image(
-      width: work.width,
-      height: work.height,
-      numChannels: 3,
-      format: img.Format.uint8,
-    );
-    img.fill(flat, color: img.ColorRgb8(255, 255, 255));
-    img.compositeImage(flat, work);
-    work = flat;
-  } else if (work.numChannels != 3) {
-    work = work.convert(numChannels: 3, format: img.Format.uint8);
-  }
-
-  return work;
 }

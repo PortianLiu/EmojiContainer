@@ -61,6 +61,7 @@ class EmojiContainerApp extends StatelessWidget {
         ),
         RepositoryProvider(create: (_) => ShareImportService()),
         RepositoryProvider(create: (_) => CoverThumbCacheService()),
+        RepositoryProvider(create: (_) => AlbumCacheService()),
       ],
       child: MultiBlocProvider(
         providers: [

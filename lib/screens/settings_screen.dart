@@ -6,7 +6,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../bloc/albums/albums_cubit.dart';
 import '../bloc/root_directory/root_directory_cubit.dart';
+import '../services/album_cache_service.dart';
 import '../services/album_cover_service.dart';
+import '../services/cover_thumb_cache_service.dart';
 import '../services/preferences_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -108,6 +110,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _setAutoNomedia(bool value) async {
     setState(() => _autoNomedia = value);
     await context.read<PreferencesService>().setAutoNomedia(value);
+  }
+
+  Future<void> _clearCaches() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('清理缓存'),
+        content: const Text(
+          '将删除首页列表快照（albums_cache.json）与封面缩略图目录。\n'
+          '不会删除表情包文件夹内的原图。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('清理'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    await context.read<AlbumCacheService>().clear();
+    final thumbCount = await context.read<CoverThumbCacheService>().clearAll();
+
+    final root = context.read<RootDirectoryCubit>().state.path;
+    if (root != null) {
+      context.read<AlbumsCubit>().load(root);
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('已清理列表缓存与 $thumbCount 个封面缩略图'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   Future<void> _resetAlbumOrder() async {
@@ -292,6 +334,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onChanged: _setAutoNomedia,
                   ),
                 ],
+                const _SectionDivider(),
+                _SectionTitle('缓存'),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: _clearCaches,
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    label: const Text('清理列表与封面缓存'),
+                    style: OutlinedButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(left: 4, top: 4, bottom: 4),
+                  child: Text(
+                    '清除首页列表快照与封面缩略图；GIF 封面本身不写入缩略图缓存',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
                 const SizedBox(height: 16),
               ],
             ),
