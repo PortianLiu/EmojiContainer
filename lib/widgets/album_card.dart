@@ -5,7 +5,7 @@ import '../models/emoji_album.dart';
 import '../services/album_cover_service.dart';
 import '../services/preferences_service.dart';
 import 'bottom_info_overlay.dart';
-import 'cached_cover_image.dart';
+import 'lazy_file_image.dart';
 
 /// 相册卡片：九宫格或单张封面 + 名称
 class AlbumCard extends StatelessWidget {
@@ -112,8 +112,8 @@ class _GridCover extends StatelessWidget {
       ),
       itemCount: thumbs.length,
       itemBuilder: (context, index) {
-        return CachedCoverImage(
-          sourcePath: thumbs[index],
+        return LazyFileImage(
+          path: thumbs[index],
           decodeSide: cellSide,
           fit: BoxFit.cover,
         );
@@ -151,8 +151,8 @@ class _SingleCover extends StatelessWidget {
             ),
           );
         }
-        return CachedCoverImage(
-          sourcePath: path,
+        return LazyFileImage(
+          path: path,
           decodeSide: decodeSide,
           fit: BoxFit.cover,
         );

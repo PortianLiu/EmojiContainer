@@ -18,7 +18,6 @@ import 'services/album_group_service.dart';
 import 'services/emoji_delete_service.dart';
 import 'services/nomedia_service.dart';
 import 'services/preferences_service.dart';
-import 'services/cover_thumb_cache_service.dart';
 import 'services/share_import_service.dart';
 import 'services/storage_permission_service.dart';
 import 'widgets/share_receive_listener.dart';
@@ -61,7 +60,6 @@ class EmojiContainerApp extends StatelessWidget {
           ),
         ),
         RepositoryProvider(create: (_) => ShareImportService()),
-        RepositoryProvider(create: (_) => CoverThumbCacheService()),
         RepositoryProvider(create: (_) => AlbumCacheService()),
       ],
       child: MultiBlocProvider(
@@ -78,7 +76,6 @@ class EmojiContainerApp extends StatelessWidget {
               nomediaService: context.read<NomediaService>(),
               groupService: context.read<AlbumGroupService>(),
               orderService: context.read<AlbumOrderService>(),
-              coverThumbCache: context.read<CoverThumbCacheService>(),
             ),
           ),
         ],
