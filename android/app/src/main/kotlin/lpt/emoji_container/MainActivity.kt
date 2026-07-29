@@ -1,4 +1,4 @@
-package com.lpt.emoji_container
+package lpt.emoji_container
 
 import io.flutter.embedding.android.FlutterActivity
 
