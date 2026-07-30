@@ -118,7 +118,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: const Text('清理缓存'),
         content: const Text(
           '将删除首页列表快照（albums_cache.json），加快下次启动的列表展示。\n'
-          '不会删除表情包文件夹内的原图。封面与夹内图片现由系统按显示尺寸解码，无单独封面缓存。',
+          '不会删除表情包文件夹内的原图。快照含各夹封面九宫格路径；图片仍按显示尺寸解码，无单独位图缓存。',
         ),
         actions: [
           TextButton(
@@ -352,7 +352,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Padding(
                   padding: const EdgeInsets.only(left: 4, top: 4, bottom: 4),
                   child: Text(
-                    '仅清除首页列表快照；图片展示依赖 cacheWidth 按格子大小解码',
+                    '仅清除列表与封面路径快照；图片仍按 cacheWidth 解码，无位图缓存',
                     style: theme.textTheme.bodySmall,
                   ),
                 ),

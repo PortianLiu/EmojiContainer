@@ -14,26 +14,24 @@ class AlbumCoverService {
 
   final PreferencesService _preferences;
 
+  /// 首页九宫格：优先用扫描/缓存写好的 [EmojiAlbum.coverThumbs]，避免每次 build 全量排序。
   List<String> sortedThumbs(EmojiAlbum album, {int max = 9}) {
+    if (album.coverThumbs.isNotEmpty) {
+      return album.coverThumbs.take(max).toList();
+    }
+    if (album.emojiPaths.isEmpty) return const [];
     final paths = List<String>.from(album.emojiPaths);
     sortPathsByTimeDescSync(paths);
-    return paths.where(_pathExists).take(max).toList();
+    return paths.take(max).toList();
   }
 
   String? defaultCoverPath(EmojiAlbum album) {
+    if (album.coverPath != null && album.coverPath!.isNotEmpty) {
+      return album.coverPath;
+    }
     final sorted = sortedThumbs(album, max: 1);
     if (sorted.isNotEmpty) return sorted.first;
-    final cover = album.coverPath;
-    if (cover != null && _pathExists(cover)) return cover;
     return null;
-  }
-
-  bool _pathExists(String path) {
-    try {
-      return File(path).existsSync();
-    } catch (_) {
-      return false;
-    }
   }
 
   Future<String?> resolveSingleCover(EmojiAlbum album) async {
@@ -50,6 +48,39 @@ class AlbumCoverService {
 
   Future<void> clearCustomCover(String albumPath) async {
     await _preferences.setCustomCoverPath(albumPath, null);
+  }
+
+  /// 后台扫描完成后：磁盘缓存写新封面；本次 UI 仍沿用旧封面（SWR）。
+  /// 新出现的相册使用扫描得到的封面。
+  static List<EmojiAlbumGroup> preserveDisplayCovers({
+    required List<EmojiAlbumGroup> previous,
+    required List<EmojiAlbumGroup> fresh,
+  }) {
+    final oldByPath = <String, EmojiAlbum>{
+      for (final album in previous.expand((g) => g.albums)) album.path: album,
+    };
+
+    return [
+      for (final group in fresh)
+        EmojiAlbumGroup(
+          id: group.id,
+          name: group.name,
+          albums: [
+            for (final album in group.albums)
+              _keepPreviousCoverIfAny(oldByPath[album.path], album),
+          ],
+        ),
+    ];
+  }
+
+  static EmojiAlbum _keepPreviousCoverIfAny(EmojiAlbum? previous, EmojiAlbum fresh) {
+    if (previous == null) return fresh;
+    final oldThumbs = previous.coverThumbs;
+    if (oldThumbs.isEmpty && previous.coverPath == null) return fresh;
+    return fresh.copyWith(
+      coverPath: previous.coverPath ?? fresh.coverPath,
+      coverThumbs: oldThumbs.isNotEmpty ? oldThumbs : fresh.coverThumbs,
+    );
   }
 }
 

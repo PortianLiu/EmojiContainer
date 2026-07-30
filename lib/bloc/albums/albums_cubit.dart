@@ -103,6 +103,7 @@ class AlbumsCubit extends Cubit<AlbumsState> {
           groupService: _groupService,
           orderService: _orderService,
         );
+        // 磁盘始终写入扫描结果（含最新 coverThumbs），下次冷启动生效
         await _cache.saveGroups(rootPath, groups);
 
         if (Platform.isAndroid && await _preferences.getAutoNomedia()) {
@@ -110,10 +111,19 @@ class AlbumsCubit extends Cubit<AlbumsState> {
         }
 
         if (_loadingRoot == rootPath) {
+          // 本次已用缓存/旧列表画过封面时：UI 保留旧 coverThumbs，避免刷新闪换封面
+          final keepCovers = state.status == AlbumsStatus.loaded &&
+              state.groups.isNotEmpty;
+          final uiGroups = keepCovers
+              ? AlbumCoverService.preserveDisplayCovers(
+                  previous: state.groups,
+                  fresh: groups,
+                )
+              : groups;
           emit(
             AlbumsState(
               status: AlbumsStatus.loaded,
-              groups: groups,
+              groups: uiGroups,
               browseMode: mode,
               coverStyle: coverStyle,
               nestedSortOrder: nestedSort,
