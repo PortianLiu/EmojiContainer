@@ -61,16 +61,15 @@ class RootDirectoryCubit extends Cubit<RootDirectoryState> {
     }
 
     if (!await _storage.canReadDirectory(path)) {
+      // 不把无权限路径当成已就绪，否则会立刻进主页并打断授权弹窗
       emit(
         RootDirectoryState(
-          status: RootDirectoryStatus.ready,
-          path: path,
+          status: RootDirectoryStatus.error,
           errorMessage:
-              '目录已保存，但当前无法读取。请在应用内点击「开启文件访问权限」，'
-              '在系统设置中允许「访问所有文件」。',
+              '无法读取该目录。请先开启「允许访问所有文件」'
+              '（不是相册/照片权限），再重新选择文件夹。',
         ),
       );
-      await _preferences.setRootDirectory(path);
       return;
     }
 

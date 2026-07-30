@@ -136,13 +136,26 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
     final path = controller.text.trim();
     if (path.isEmpty) return;
 
-    await rootCubit.setPath(path);
+    final permission = context.read<StoragePermissionService>();
+    if (!await permission.ensureManageStorageBeforePick(context)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('未获得「所有文件访问」权限，无法切换目录'),
+        ),
+      );
+      return;
+    }
     if (!mounted) return;
 
-    final permission = context.read<StoragePermissionService>();
     if (!await permission.canReadDirectory(path)) {
-      await permission.requestAccess(context, rootPath: path);
+      if (!mounted) return;
+      final ok = await permission.requestAccess(context, rootPath: path);
+      if (!ok || !mounted) return;
     }
+
+    if (!mounted) return;
+    await rootCubit.setPath(path);
     if (mounted) await _reloadAlbums();
   }
 

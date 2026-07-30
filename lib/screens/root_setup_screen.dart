@@ -30,19 +30,41 @@ class _RootSetupScreenState extends State<RootSetupScreen> {
   Future<void> _pickDirectory() async {
     if (!mounted) return;
 
+    final permission = context.read<StoragePermissionService>();
+    // Android：先拿到「所有文件访问」，否则选中的路径无法用 dart:io 读取
+    if (!await permission.ensureManageStorageBeforePick(context)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('未获得「所有文件访问」权限，无法使用该文件夹'),
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
+
     final path = await FilePicker.platform.getDirectoryPath(
       dialogTitle: '选择表情包总目录',
     );
     if (path == null || !mounted) return;
 
     _controller.text = path;
-    await context.read<RootDirectoryCubit>().setPath(path);
+
+    if (!await permission.canReadDirectory(path)) {
+      if (!mounted) return;
+      final ok = await permission.requestAccess(context, rootPath: path);
+      if (!ok || !mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('仍无法读取该文件夹，请确认已开启「允许访问所有文件」'),
+          ),
+        );
+        return;
+      }
+    }
 
     if (!mounted) return;
-    final permission = context.read<StoragePermissionService>();
-    if (!await permission.canReadDirectory(path)) {
-      await permission.requestAccess(context, rootPath: path);
-    }
+    await context.read<RootDirectoryCubit>().setPath(path);
   }
 
   Future<void> _submitPath() async {
