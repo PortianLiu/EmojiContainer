@@ -46,11 +46,19 @@ class AlbumCacheService {
 
   EmojiAlbum _albumFromJson(dynamic e) {
     final m = e as Map<String, dynamic>;
+    final emojiPaths = List<String>.from(m['emojiPaths'] as List? ?? const []);
+    final rawThumbs = m['coverThumbs'] as List?;
+    // 旧缓存无 coverThumbs：emojiPaths 扫描时已按时间倒序，直接取前 9
+    final coverThumbs = rawThumbs != null
+        ? List<String>.from(rawThumbs)
+        : emojiPaths.take(9).toList();
     return EmojiAlbum(
       name: m['name'] as String,
       path: m['path'] as String,
-      emojiPaths: List<String>.from(m['emojiPaths'] as List),
-      coverPath: m['coverPath'] as String?,
+      emojiPaths: emojiPaths,
+      coverPath: m['coverPath'] as String? ??
+          (coverThumbs.isNotEmpty ? coverThumbs.first : null),
+      coverThumbs: coverThumbs,
       imageCount: m['imageCount'] as int?,
     );
   }
@@ -77,6 +85,7 @@ class AlbumCacheService {
                       'path': a.path,
                       'emojiPaths': a.emojiPaths,
                       'coverPath': a.coverPath,
+                      'coverThumbs': a.coverThumbs,
                       'imageCount': a.imageCount,
                     },
                   )

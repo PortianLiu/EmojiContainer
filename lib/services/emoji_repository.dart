@@ -102,15 +102,7 @@ class EmojiRepository {
     final directImages = await _collectImages(dir, recursive: false);
     if (directImages.isNotEmpty) {
       sortPathsByTimeDescSync(directImages);
-      out.add(
-        EmojiAlbum(
-          name: _folderName(dir.path),
-          path: dir.path,
-          emojiPaths: directImages,
-          coverPath: _pickNewestCover(directImages),
-          imageCount: directImages.length,
-        ),
-      );
+      out.add(_albumFromSortedImages(dir.path, directImages));
     }
 
     for (final child in await _listChildDirs(dir)) {
@@ -126,19 +118,22 @@ class EmojiRepository {
       if (directImages.isEmpty && childDirs.isEmpty) continue;
 
       sortPathsByTimeDescSync(directImages);
-      albums.add(
-        EmojiAlbum(
-          name: _folderName(dir.path),
-          path: dir.path,
-          emojiPaths: directImages,
-          coverPath: _pickNewestCover(directImages),
-          imageCount: directImages.length,
-        ),
-      );
+      albums.add(_albumFromSortedImages(dir.path, directImages));
     }
 
     sortAlbumsByActivityDesc(albums);
     return albums;
+  }
+
+  EmojiAlbum _albumFromSortedImages(String dirPath, List<String> sortedImages) {
+    return EmojiAlbum(
+      name: _folderName(dirPath),
+      path: dirPath,
+      emojiPaths: sortedImages,
+      coverPath: sortedImages.isNotEmpty ? sortedImages.first : null,
+      coverThumbs: sortedImages.take(9).toList(),
+      imageCount: sortedImages.length,
+    );
   }
 
   int _sumDirectCounts(List<EmojiAlbum> albums) {
@@ -153,22 +148,12 @@ class EmojiRepository {
       if (_shouldSkipDir(name)) continue;
       result.add(entity);
     }
-    result.sort(
-      (a, b) => directoryModifiedMillisSync(b.path)
-          .compareTo(directoryModifiedMillisSync(a.path)),
-    );
+    sortDirectoriesByMtimeDescSync(result);
     return result;
   }
 
   bool _shouldSkipDir(String name) =>
       name.startsWith('.') || skipDirNames.contains(name);
-
-  String? _pickNewestCover(List<String> paths) {
-    if (paths.isEmpty) return null;
-    final sorted = List<String>.from(paths);
-    sortPathsByTimeDescSync(sorted);
-    return sorted.first;
-  }
 
   Future<List<String>> _collectImages(
     Directory dir, {

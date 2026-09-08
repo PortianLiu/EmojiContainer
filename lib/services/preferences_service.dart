@@ -50,6 +50,17 @@ class PreferencesService {
   static const _keyAlbumCoverStyle = 'album_cover_style';
   static const _keyNestedSortOrder = 'nested_sort_order';
   static const _keyCustomCoverPrefix = 'custom_cover_';
+  static const _keyAdvancedSettings = 'advanced_settings';
+
+  Future<bool> getAdvancedSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyAdvancedSettings) ?? false;
+  }
+
+  Future<void> setAdvancedSettings(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyAdvancedSettings, enabled);
+  }
 
   Future<String?> getRootDirectory() async {
     final prefs = await SharedPreferences.getInstance();

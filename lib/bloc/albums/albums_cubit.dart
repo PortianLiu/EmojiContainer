@@ -7,6 +7,7 @@ import '../../services/album_group_service.dart';
 import '../../services/emoji_repository.dart';
 import '../../services/nomedia_service.dart';
 import '../../services/preferences_service.dart';
+import '../../services/startup_timing_store.dart';
 import 'albums_state.dart';
 
 class AlbumsCubit extends Cubit<AlbumsState> {
@@ -17,12 +18,14 @@ class AlbumsCubit extends Cubit<AlbumsState> {
     NomediaService? nomediaService,
     AlbumGroupService? groupService,
     AlbumOrderService? orderService,
+    StartupTimingStore? timingStore,
   })  : _repository = repository,
         _cache = cacheService ?? AlbumCacheService(),
         _preferences = preferences ?? PreferencesService(),
         _nomedia = nomediaService ?? NomediaService(),
         _groupService = groupService ?? AlbumGroupService(),
         _orderService = orderService ?? AlbumOrderService(),
+        _timing = timingStore ?? startupTimingStore,
         super(const AlbumsState());
 
   final EmojiRepository _repository;
@@ -31,6 +34,7 @@ class AlbumsCubit extends Cubit<AlbumsState> {
   final NomediaService _nomedia;
   final AlbumGroupService _groupService;
   final AlbumOrderService _orderService;
+  final StartupTimingStore _timing;
   String? _loadingRoot;
   bool _scanInProgress = false;
 
@@ -38,13 +42,22 @@ class AlbumsCubit extends Cubit<AlbumsState> {
     if (_loadingRoot == rootPath && _scanInProgress) return;
     _loadingRoot = rootPath;
 
+    final sw = StageStopwatch();
+    var fromCache = false;
+    int? albumCount;
+
     final mode = await _preferences.getBrowseMode();
     final coverStyle = await _preferences.getAlbumCoverStyle();
     final nestedSort = await _preferences.getNestedSortOrder();
+    sw.lap('prefs');
 
     if (mode == BrowseMode.flat) {
       final cached = await _cache.loadGroups(rootPath);
+      sw.lap('cacheRead');
       if (cached != null && cached.any((g) => g.albums.isNotEmpty)) {
+        fromCache = true;
+        albumCount = cached.expand((g) => g.albums).length;
+        sw.stagesMs['firstList'] = sw.elapsed();
         emit(
           AlbumsState(
             status: AlbumsStatus.loaded,
@@ -73,7 +86,20 @@ class AlbumsCubit extends Cubit<AlbumsState> {
       ));
     }
 
-    if (_scanInProgress) return;
+    if (_scanInProgress) {
+      sw.setTotal();
+      _timing.add(
+        StartupTimingRecord(
+          at: DateTime.now(),
+          kind: 'albums',
+          stagesMs: Map<String, int>.from(sw.stagesMs),
+          fromCache: fromCache,
+          albumCount: albumCount,
+          note: 'scan skipped (already in progress)',
+        ),
+      );
+      return;
+    }
     _scanInProgress = true;
 
     try {
@@ -83,6 +109,12 @@ class AlbumsCubit extends Cubit<AlbumsState> {
           BrowseMode.nested,
           sortOrder: nestedSort,
         );
+        sw.lap('scan');
+        albumCount =
+            nestedRoot.subAlbums.length + nestedRoot.emojiPaths.length;
+        if (!fromCache) {
+          sw.stagesMs['firstList'] = sw.elapsed();
+        }
         if (_loadingRoot == rootPath) {
           emit(
             AlbumsState(
@@ -103,17 +135,36 @@ class AlbumsCubit extends Cubit<AlbumsState> {
           groupService: _groupService,
           orderService: _orderService,
         );
+        sw.lap('scan');
+        albumCount = groups.expand((g) => g.albums).length;
+
+        // 磁盘始终写入扫描结果（含最新 coverThumbs），下次冷启动生效
         await _cache.saveGroups(rootPath, groups);
+        sw.lap('cacheSave');
 
         if (Platform.isAndroid && await _preferences.getAutoNomedia()) {
           await _nomedia.ensureNomediaUnder(rootPath);
+          sw.lap('nomedia');
+        }
+
+        if (!fromCache) {
+          sw.stagesMs['firstList'] = sw.elapsed();
         }
 
         if (_loadingRoot == rootPath) {
+          // 本次已用缓存/旧列表画过封面时：UI 保留旧 coverThumbs，避免刷新闪换封面
+          final keepCovers = state.status == AlbumsStatus.loaded &&
+              state.groups.isNotEmpty;
+          final uiGroups = keepCovers
+              ? AlbumCoverService.preserveDisplayCovers(
+                  previous: state.groups,
+                  fresh: groups,
+                )
+              : groups;
           emit(
             AlbumsState(
               status: AlbumsStatus.loaded,
-              groups: groups,
+              groups: uiGroups,
               browseMode: mode,
               coverStyle: coverStyle,
               nestedSortOrder: nestedSort,
@@ -129,6 +180,17 @@ class AlbumsCubit extends Cubit<AlbumsState> {
       _emitError('加载失败：$e', mode, coverStyle, nestedSort);
     } finally {
       _scanInProgress = false;
+      sw.setTotal();
+      _timing.add(
+        StartupTimingRecord(
+          at: DateTime.now(),
+          kind: 'albums',
+          stagesMs: Map<String, int>.from(sw.stagesMs),
+          fromCache: fromCache,
+          albumCount: albumCount,
+          note: mode == BrowseMode.nested ? 'nested' : 'flat',
+        ),
+      );
     }
   }
 
