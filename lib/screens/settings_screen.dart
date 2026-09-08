@@ -9,6 +9,7 @@ import '../bloc/root_directory/root_directory_cubit.dart';
 import '../services/album_cache_service.dart';
 import '../services/album_cover_service.dart';
 import '../services/preferences_service.dart';
+import '../services/startup_timing_store.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -24,6 +25,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   AlbumCoverStyle _coverStyle = AlbumCoverStyle.grid;
   NestedSortOrder _nestedSortOrder = NestedSortOrder.foldersFirst;
   bool _autoNomedia = false;
+  bool _advanced = false;
   bool _loading = true;
 
   @override
@@ -41,6 +43,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final cover = await prefs.getAlbumCoverStyle();
     final nestedSort = await prefs.getNestedSortOrder();
     final nomedia = await prefs.getAutoNomedia();
+    final advanced = await prefs.getAdvancedSettings();
     if (mounted) {
       setState(() {
         _createRootController.text = createRoot ?? '';
@@ -49,6 +52,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _coverStyle = cover;
         _nestedSortOrder = nestedSort;
         _autoNomedia = nomedia;
+        _advanced = advanced;
         _loading = false;
       });
     }
@@ -109,6 +113,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _setAutoNomedia(bool value) async {
     setState(() => _autoNomedia = value);
     await context.read<PreferencesService>().setAutoNomedia(value);
+  }
+
+  Future<void> _setAdvanced(bool value) async {
+    setState(() => _advanced = value);
+    await context.read<PreferencesService>().setAdvancedSettings(value);
+  }
+
+  Future<void> _clearTimingHistory() async {
+    startupTimingStore.clear();
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('已清除启动耗时记录'),
+        duration: Duration(seconds: 2),
+      ),
+    );
   }
 
   Future<void> _clearCaches() async {
@@ -356,6 +377,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     style: theme.textTheme.bodySmall,
                   ),
                 ),
+                const _SectionDivider(),
+                SwitchListTile(
+                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                  title: const Text('高级'),
+                  subtitle: const Text('显示启动各阶段耗时记录'),
+                  value: _advanced,
+                  onChanged: _setAdvanced,
+                ),
+                if (_advanced) ...[
+                  _SectionTitle('启动耗时', topGap: 4),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4, bottom: 6),
+                    child: Text(
+                      '仅保留本会话记录（每次启动清空）；冷启动/刷新会追加。亦输出 logcat：[StartupTiming]',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                  ListenableBuilder(
+                    listenable: startupTimingStore,
+                    builder: (context, _) {
+                      final records = startupTimingStore.records;
+                      if (records.isEmpty) {
+                        return Padding(
+                          padding: const EdgeInsets.only(left: 4, bottom: 8),
+                          child: Text(
+                            '尚无记录，请返回首页触发加载后再查看',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        );
+                      }
+                      return Column(
+                        children: [
+                          for (final r in records) _TimingRecordTile(record: r),
+                        ],
+                      );
+                    },
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      onPressed: _clearTimingHistory,
+                      child: const Text('清除耗时记录'),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
               ],
             ),
@@ -378,6 +445,84 @@ class _SectionTitle extends StatelessWidget {
         style: Theme.of(context).textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w600,
             ),
+      ),
+    );
+  }
+}
+
+class _TimingRecordTile extends StatelessWidget {
+  const _TimingRecordTile({required this.record});
+
+  final StartupTimingRecord record;
+
+  String _fmtTime(DateTime at) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(at.month)}-${two(at.day)} '
+        '${two(at.hour)}:${two(at.minute)}:${two(at.second)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final subtitle = StringBuffer()
+      ..write('合计 ${record.totalMs} ms');
+    if (record.fromCache) subtitle.write(' · 命中缓存');
+    if (record.albumCount != null) {
+      subtitle.write(' · ${record.albumCount} 项');
+    }
+    if (record.note != null && record.note!.isNotEmpty) {
+      subtitle.write(' · ${record.note}');
+    }
+
+    final stageOrder = [
+      'tray',
+      'prefs',
+      'validate',
+      'cacheRead',
+      'firstList',
+      'scan',
+      'cacheSave',
+      'nomedia',
+      'total',
+    ];
+    final keys = [
+      ...stageOrder.where(record.stagesMs.containsKey),
+      ...record.stagesMs.keys.where((k) => !stageOrder.contains(k)),
+    ];
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 6),
+      child: ExpansionTile(
+        dense: true,
+        tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+        childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+        title: Text(
+          '${record.kindLabel} · ${_fmtTime(record.at)}',
+          style: theme.textTheme.bodyMedium,
+        ),
+        subtitle: Text(subtitle.toString(), style: theme.textTheme.bodySmall),
+        children: [
+          for (final key in keys)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      StartupTimingRecord.stageLabels[key] ?? key,
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                  Text(
+                    '${record.stagesMs[key]} ms',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }

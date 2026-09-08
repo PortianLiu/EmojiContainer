@@ -20,6 +20,7 @@ import 'services/nomedia_service.dart';
 import 'services/preferences_service.dart';
 import 'services/share_import_service.dart';
 import 'services/storage_permission_service.dart';
+import 'services/startup_timing_store.dart';
 import 'widgets/share_receive_listener.dart';
 
 final _navigatorKey = GlobalKey<NavigatorState>();
@@ -61,12 +62,15 @@ class EmojiContainerApp extends StatelessWidget {
         ),
         RepositoryProvider(create: (_) => ShareImportService()),
         RepositoryProvider(create: (_) => AlbumCacheService()),
+        // StartupTimingStore 为 ChangeNotifier，用全局单例 + ListenableBuilder，
+        // 勿用 RepositoryProvider（会触发 Provider 的 Listenable 类型检查）。
       ],
       child: MultiBlocProvider(
         providers: [
           BlocProvider(
             create: (context) => RootDirectoryCubit(
               preferences: context.read<PreferencesService>(),
+              timingStore: startupTimingStore,
             )..loadSaved(),
           ),
           BlocProvider(
@@ -76,6 +80,7 @@ class EmojiContainerApp extends StatelessWidget {
               nomediaService: context.read<NomediaService>(),
               groupService: context.read<AlbumGroupService>(),
               orderService: context.read<AlbumOrderService>(),
+              timingStore: startupTimingStore,
             ),
           ),
         ],
