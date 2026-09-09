@@ -91,10 +91,8 @@ class MainActivity : FlutterActivity() {
             }
     }
 
-    /**
-     * 定向分享给好友会话，避免拉起含朋友圈/状态/收藏等的完整面板。
-     * 微信：ShareImgUI；QQ：JumpActivity。
-     */
+    // 定向分享给好友会话，避免拉起含朋友圈/状态/收藏等的完整面板。
+    // 微信: ShareImgUI；QQ: JumpActivity。
     private fun shareToFriends(filePath: String, packageName: String, target: String?) {
         val source = File(filePath)
         if (!source.exists()) {
@@ -164,7 +162,7 @@ class MainActivity : FlutterActivity() {
         startActivity(fallback)
     }
 
-    /** 可接收 image/* 分享的已安装应用（用于用户扩展通道）。 */
+    // 可接收图片分享的已安装应用（用于用户扩展通道）。
     private fun listImageShareTargets(): List<Map<String, String>> {
         val intent = Intent(Intent.ACTION_SEND).apply { type = "image/*" }
         @Suppress("DEPRECATION")
@@ -203,7 +201,6 @@ class MainActivity : FlutterActivity() {
     private fun friendShareClassNames(packageName: String, target: String?): List<String> {
         return when {
             packageName == "com.tencent.mm" || target == "wechat_friends" -> listOf(
-                // 发送给微信好友（会话），而非完整分享面板
                 "com.tencent.mm.ui.tools.ShareImgUI",
             )
             packageName == "com.tencent.mobileqq" || target == "qq_friends" -> listOf(
@@ -220,7 +217,7 @@ class MainActivity : FlutterActivity() {
         return MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
     }
 
-    /** 读取已安装应用图标，返回 PNG 字节（无需内置资源）。 */
+    // 读取已安装应用图标，返回 PNG 字节（无需内置资源）。
     private fun appIconPng(packageName: String): ByteArray {
         val drawable = packageManager.getApplicationIcon(packageName)
         val bitmap = drawableToBitmap(drawable)
