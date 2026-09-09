@@ -464,7 +464,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 child: Text(
                   mobile
-                      ? '点选表情或子文件夹；底部可复制到系统相册或删除'
+                      ? '点选表情或子文件夹；底部可图片时间置顶（copy）或删除'
                       : '点选要删除的表情或子文件夹',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context)
@@ -530,6 +530,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                               return EmojiTile(
                                 path: path,
                                 decodeSide: decodeSide,
+                                albumName: widget.album.name,
                                 selectable: _selectionMode,
                                 selected: _selectedPaths.contains(path),
                                 onTap: () => _showPreview(path, index),
@@ -564,7 +565,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                           label: Text(
                             _exporting
                                 ? '复制中…'
-                                : '复制到系统相册 (${_selectedPaths.length})',
+                                : '图片时间置顶（copy）(${_selectedPaths.length})',
                           ),
                         ),
                       ),
@@ -750,7 +751,11 @@ class _EmojiPreviewPageState extends State<_EmojiPreviewPage> {
           );
 
           page = DraggableEmojiWrapper(filePath: path, child: page);
-          page = SwipeUpToShare(filePath: path, child: page);
+          page = SwipeUpToShare(
+            filePath: path,
+            albumName: widget.title,
+            child: page,
+          );
 
           return page;
         },

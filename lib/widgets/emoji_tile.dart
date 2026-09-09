@@ -7,6 +7,7 @@ import '../utils/platform_utils.dart';
 import 'bottom_info_overlay.dart';
 import 'desktop_copy_button.dart';
 import 'draggable_emoji_wrapper.dart';
+import 'emoji_share_sheet.dart';
 import 'lazy_file_image.dart';
 
 class EmojiTile extends StatelessWidget {
@@ -18,6 +19,7 @@ class EmojiTile extends StatelessWidget {
     this.onLongPress,
     this.selectable = false,
     this.selected = false,
+    this.albumName,
   });
 
   final String path;
@@ -26,6 +28,7 @@ class EmojiTile extends StatelessWidget {
   final VoidCallback? onLongPress;
   final bool selectable;
   final bool selected;
+  final String? albumName;
 
   @override
   Widget build(BuildContext context) {
@@ -82,10 +85,20 @@ class EmojiTile extends StatelessWidget {
         onTap: onTap,
         onLongPress: onLongPress,
         onDoubleTap: canQuickSend
-            ? () => context.read<EmojiSendService>().sendWithFeedback(
-                  context,
-                  path,
-                )
+            ? () {
+                if (supportsSystemShare) {
+                  presentEmojiShareOptions(
+                    context,
+                    path,
+                    albumName: albumName,
+                  );
+                } else {
+                  context.read<EmojiSendService>().sendWithFeedback(
+                        context,
+                        path,
+                      );
+                }
+              }
             : null,
         child: tile,
       ),
