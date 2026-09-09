@@ -3,6 +3,7 @@ package lpt.emoji_container
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
@@ -78,6 +79,13 @@ class MainActivity : FlutterActivity() {
                             result.error("icon_not_found", e.message, null)
                         }
                     }
+                    "listImageShareTargets" -> {
+                        try {
+                            result.success(listImageShareTargets())
+                        } catch (e: Exception) {
+                            result.error("list_failed", e.message, null)
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -133,7 +141,63 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        throw lastError ?: ActivityNotFoundException("无法打开分享目标")
+        // 自定义通道或未知 App：按包名拉起该应用的图片分享入口
+        val activity = target?.takeIf {
+            it.isNotBlank() &&
+                it != "wechat_friends" &&
+                it != "qq_friends" &&
+                it.contains('.')
+        }
+        val fallback = Intent(Intent.ACTION_SEND).apply {
+            type = mime
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (activity != null) {
+                component = ComponentName(packageName, activity)
+            } else {
+                setPackage(packageName)
+            }
+        }
+        if (fallback.resolveActivity(packageManager) == null) {
+            throw lastError ?: ActivityNotFoundException("无法打开分享目标")
+        }
+        startActivity(fallback)
+    }
+
+    /** 可接收 image/* 分享的已安装应用（用于用户扩展通道）。 */
+    private fun listImageShareTargets(): List<Map<String, String>> {
+        val intent = Intent(Intent.ACTION_SEND).apply { type = "image/*" }
+        @Suppress("DEPRECATION")
+        val resolves = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.queryIntentActivities(
+                intent,
+                PackageManager.ResolveInfoFlags.of(
+                    PackageManager.MATCH_DEFAULT_ONLY.toLong(),
+                ),
+            )
+        } else {
+            packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+        }
+
+        val self = applicationContext.packageName
+        val seen = LinkedHashSet<String>()
+        val out = ArrayList<Map<String, String>>()
+        for (info in resolves) {
+            val pkg = info.activityInfo?.packageName ?: continue
+            if (pkg == self) continue
+            if (!seen.add(pkg)) continue
+            val label = info.loadLabel(packageManager)?.toString()?.trim().orEmpty()
+            val activity = info.activityInfo?.name.orEmpty()
+            out.add(
+                mapOf(
+                    "packageName" to pkg,
+                    "label" to label.ifEmpty { pkg },
+                    "activity" to activity,
+                ),
+            )
+        }
+        out.sortBy { it["label"]?.lowercase() ?: it["packageName"]!! }
+        return out
     }
 
     private fun friendShareClassNames(packageName: String, target: String?): List<String> {

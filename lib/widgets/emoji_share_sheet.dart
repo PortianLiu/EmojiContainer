@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import '../bloc/root_directory/root_directory_cubit.dart';
 import '../services/emoji_send_service.dart';
+import '../services/preferences_service.dart';
 import '../services/storage_permission_service.dart';
 
 /// 校验权限后弹出分享选项（微信 / QQ / 时间置顶 / 通用分享）
@@ -32,12 +33,16 @@ Future<void> presentEmojiShareOptions(
   );
 }
 
-/// App 内分享选项：微信 / QQ / 时间置顶 / 通用分享（宫格）
+/// App 内分享选项：内置通道 + 用户自定义通道（宫格）
 Future<void> showEmojiShareSheet({
   required BuildContext context,
   required String filePath,
   required String albumName,
-}) {
+}) async {
+  final customChannels =
+      await context.read<PreferencesService>().getCustomShareChannels();
+  if (!context.mounted) return;
+
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -70,6 +75,18 @@ Future<void> showEmojiShareSheet({
             successMessage: '已打开QQ分享',
           ),
         ),
+        for (final channel in customChannels)
+          _ShareGridItem(
+            fallbackIcon: Icons.apps_outlined,
+            label: channel.label,
+            appPackage: channel.packageName,
+            onTap: () => _runAction(
+              rootContext: context,
+              sheetContext: sheetContext,
+              action: () => send.shareToCustomChannel(filePath, channel),
+              successMessage: '已打开${channel.label}',
+            ),
+          ),
         _ShareGridItem(
           fallbackIcon: Icons.push_pin_outlined,
           label: '时间置顶',
@@ -102,6 +119,8 @@ Future<void> showEmojiShareSheet({
       ];
 
       final scheme = Theme.of(sheetContext).colorScheme;
+      // 超过 4 个时允许多行；内容过高时可滚动
+      final gridHeight = (88.0 * ((items.length + 3) ~/ 4)).clamp(88.0, 280.0);
 
       return SizedBox(
         height: MediaQuery.sizeOf(sheetContext).height,
@@ -144,16 +163,17 @@ Future<void> showEmojiShareSheet({
                             ?.copyWith(fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 16),
-                      GridView.count(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        crossAxisCount: 4,
-                        mainAxisSpacing: 8,
-                        crossAxisSpacing: 8,
-                        childAspectRatio: 0.85,
-                        children: [
-                          for (final item in items) _ShareGridCell(item: item),
-                        ],
+                      SizedBox(
+                        height: gridHeight,
+                        child: GridView.count(
+                          crossAxisCount: 4,
+                          mainAxisSpacing: 8,
+                          crossAxisSpacing: 8,
+                          childAspectRatio: 0.85,
+                          children: [
+                            for (final item in items) _ShareGridCell(item: item),
+                          ],
+                        ),
                       ),
                     ],
                   ),

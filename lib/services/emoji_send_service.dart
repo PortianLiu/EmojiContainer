@@ -7,12 +7,40 @@ import 'package:pasteboard/pasteboard.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../bloc/root_directory/root_directory_cubit.dart';
+import '../models/custom_share_channel.dart';
 import '../models/emoji_export_item.dart';
 import 'camera_export_service.dart';
 import 'gallery_image_exporter.dart';
 import '../utils/android_media_permission.dart';
 import '../utils/file_name_utils.dart';
 import '../utils/platform_utils.dart';
+
+/// 系统可接收图片分享的应用（用于扩展通道）
+class ImageShareTarget {
+  const ImageShareTarget({
+    required this.packageName,
+    required this.label,
+    this.activity,
+  });
+
+  final String packageName;
+  final String label;
+  final String? activity;
+
+  factory ImageShareTarget.fromMap(Map<dynamic, dynamic> map) {
+    return ImageShareTarget(
+      packageName: map['packageName'] as String? ?? '',
+      label: map['label'] as String? ?? '',
+      activity: map['activity'] as String?,
+    );
+  }
+
+  CustomShareChannel toChannel() => CustomShareChannel(
+        packageName: packageName,
+        label: label,
+        activity: activity,
+      );
+}
 
 /// 发送表情：定向/系统分享，或电脑复制到剪贴板
 class EmojiSendService {
@@ -39,6 +67,24 @@ class EmojiSendService {
     } catch (_) {
       _appIconCache[packageName] = null;
       return null;
+    }
+  }
+
+  /// 列出可接收图片分享的已安装应用。
+  Future<List<ImageShareTarget>> listImageShareTargets() async {
+    if (!Platform.isAndroid) return const [];
+    try {
+      final raw = await _shareChannel.invokeMethod<List<dynamic>>(
+        'listImageShareTargets',
+      );
+      if (raw == null) return const [];
+      return raw
+          .whereType<Map>()
+          .map((e) => ImageShareTarget.fromMap(e))
+          .where((t) => t.packageName.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return const [];
     }
   }
 
@@ -106,6 +152,17 @@ class EmojiSendService {
         target: 'qq_friends',
       );
 
+  Future<String?> shareToCustomChannel(
+    String filePath,
+    CustomShareChannel channel,
+  ) =>
+      _shareToPackage(
+        filePath,
+        channel.packageName,
+        appLabel: channel.label,
+        target: channel.activity,
+      );
+
   Future<String?> shareSystem(String filePath) async {
     try {
       final permissionError = await ensureAndroidMediaReadPermission();
@@ -154,7 +211,7 @@ class EmojiSendService {
     String filePath,
     String packageName, {
     required String appLabel,
-    required String target,
+    String? target,
   }) async {
     if (!Platform.isAndroid) {
       return shareSystem(filePath);
@@ -169,7 +226,7 @@ class EmojiSendService {
       await _shareChannel.invokeMethod<void>('shareToPackage', {
         'filePath': filePath,
         'packageName': packageName,
-        'target': target,
+        if (target != null && target.isNotEmpty) 'target': target,
       });
       return null;
     } on PlatformException catch (e) {

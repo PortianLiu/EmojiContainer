@@ -10,6 +10,7 @@ import '../services/album_cache_service.dart';
 import '../services/album_cover_service.dart';
 import '../services/preferences_service.dart';
 import '../services/startup_timing_store.dart';
+import 'share_channels_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -351,6 +352,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     subtitle: const Text('避免被系统相册扫描'),
                     value: _autoNomedia,
                     onChanged: _setAutoNomedia,
+                  ),
+                  const _SectionDivider(),
+                  _SectionTitle('分享'),
+                  ListTile(
+                    dense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                    leading: const Icon(Icons.share_outlined),
+                    title: const Text('自定义分享通道'),
+                    subtitle: const Text('添加更多应用到分享宫格'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const ShareChannelsScreen(),
+                        ),
+                      );
+                    },
                   ),
                 ],
                 const _SectionDivider(),

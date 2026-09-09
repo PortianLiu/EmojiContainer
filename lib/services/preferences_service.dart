@@ -1,4 +1,8 @@
+import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../models/custom_share_channel.dart';
 
 enum ImportMode { cut, copy }
 
@@ -51,6 +55,7 @@ class PreferencesService {
   static const _keyNestedSortOrder = 'nested_sort_order';
   static const _keyCustomCoverPrefix = 'custom_cover_';
   static const _keyAdvancedSettings = 'advanced_settings';
+  static const _keyCustomShareChannels = 'custom_share_channels';
 
   Future<bool> getAdvancedSettings() async {
     final prefs = await SharedPreferences.getInstance();
@@ -60,6 +65,30 @@ class PreferencesService {
   Future<void> setAdvancedSettings(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyAdvancedSettings, enabled);
+  }
+
+  Future<List<CustomShareChannel>> getCustomShareChannels() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_keyCustomShareChannels);
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list
+          .whereType<Map>()
+          .map((e) => CustomShareChannel.fromJson(
+                Map<String, dynamic>.from(e),
+              ))
+          .where((c) => c.packageName.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> setCustomShareChannels(List<CustomShareChannel> channels) async {
+    final prefs = await SharedPreferences.getInstance();
+    final encoded = jsonEncode(channels.map((c) => c.toJson()).toList());
+    await prefs.setString(_keyCustomShareChannels, encoded);
   }
 
   Future<String?> getRootDirectory() async {
