@@ -1,7 +1,12 @@
 package lpt.emoji_container
 
 import android.content.ActivityNotFoundException
+import android.content.ComponentName
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -11,6 +16,7 @@ import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.ByteArrayOutputStream
 import java.io.File
 
 class MainActivity : FlutterActivity() {
@@ -46,12 +52,13 @@ class MainActivity : FlutterActivity() {
                     "shareToPackage" -> {
                         val filePath = call.argument<String>("filePath")
                         val packageName = call.argument<String>("packageName")
+                        val target = call.argument<String>("target")
                         if (filePath.isNullOrBlank() || packageName.isNullOrBlank()) {
                             result.error("invalid_args", "filePath/packageName required", null)
                             return@setMethodCallHandler
                         }
                         try {
-                            shareToPackage(filePath, packageName)
+                            shareToFriends(filePath, packageName, target)
                             result.success(null)
                         } catch (e: ActivityNotFoundException) {
                             result.error("app_not_found", e.message, null)
@@ -59,49 +66,117 @@ class MainActivity : FlutterActivity() {
                             result.error("share_failed", e.message, null)
                         }
                     }
+                    "getAppIcon" -> {
+                        val packageName = call.argument<String>("packageName")
+                        if (packageName.isNullOrBlank()) {
+                            result.error("invalid_args", "packageName required", null)
+                            return@setMethodCallHandler
+                        }
+                        try {
+                            result.success(appIconPng(packageName))
+                        } catch (e: Exception) {
+                            result.error("icon_not_found", e.message, null)
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }
     }
 
-    private fun shareToPackage(filePath: String, packageName: String) {
+    /**
+     * 定向分享给好友会话，避免拉起含朋友圈/状态/收藏等的完整面板。
+     * 微信：ShareImgUI；QQ：JumpActivity。
+     */
+    private fun shareToFriends(filePath: String, packageName: String, target: String?) {
         val source = File(filePath)
         if (!source.exists()) {
             throw IllegalArgumentException("文件不存在")
         }
 
-        // 拷到 cache，避免外部路径无法被 FileProvider / 目标 App 读取
         val shareDir = File(cacheDir, "share_to_app").apply { mkdirs() }
-        val target = File(shareDir, source.name)
-        source.copyTo(target, overwrite = true)
+        val targetFile = File(shareDir, source.name)
+        source.copyTo(targetFile, overwrite = true)
 
         val uri: Uri = FileProvider.getUriForFile(
             this,
             "${applicationContext.packageName}.fileprovider",
-            target,
+            targetFile,
         )
 
         val mime = mimeTypeFor(source) ?: "image/*"
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = mime
-            putExtra(Intent.EXTRA_STREAM, uri)
-            setPackage(packageName)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-
         grantUriPermission(
             packageName,
             uri,
             Intent.FLAG_GRANT_READ_URI_PERMISSION,
         )
 
-        startActivity(intent)
+        val classNames = friendShareClassNames(packageName, target)
+        var lastError: Exception? = null
+        for (className in classNames) {
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = mime
+                putExtra(Intent.EXTRA_STREAM, uri)
+                component = ComponentName(packageName, className)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            if (intent.resolveActivity(packageManager) == null) {
+                lastError = ActivityNotFoundException(className)
+                continue
+            }
+            try {
+                startActivity(intent)
+                return
+            } catch (e: ActivityNotFoundException) {
+                lastError = e
+            } catch (e: Exception) {
+                lastError = e
+            }
+        }
+
+        throw lastError ?: ActivityNotFoundException("无法打开分享目标")
+    }
+
+    private fun friendShareClassNames(packageName: String, target: String?): List<String> {
+        return when {
+            packageName == "com.tencent.mm" || target == "wechat_friends" -> listOf(
+                // 发送给微信好友（会话），而非完整分享面板
+                "com.tencent.mm.ui.tools.ShareImgUI",
+            )
+            packageName == "com.tencent.mobileqq" || target == "qq_friends" -> listOf(
+                "com.tencent.mobileqq.activity.JumpActivity",
+                "com.tencent.mobileqq.activity.qfileJumpActivity",
+            )
+            else -> emptyList()
+        }
     }
 
     private fun mimeTypeFor(file: File): String? {
         val ext = file.extension.lowercase()
         if (ext.isEmpty()) return null
         return MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
+    }
+
+    /** 读取已安装应用图标，返回 PNG 字节（无需内置资源）。 */
+    private fun appIconPng(packageName: String): ByteArray {
+        val drawable = packageManager.getApplicationIcon(packageName)
+        val bitmap = drawableToBitmap(drawable)
+        return ByteArrayOutputStream().use { out ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            out.toByteArray()
+        }
+    }
+
+    private fun drawableToBitmap(drawable: Drawable): Bitmap {
+        if (drawable is BitmapDrawable && drawable.bitmap != null) {
+            return drawable.bitmap
+        }
+        val width = drawable.intrinsicWidth.takeIf { it > 0 } ?: 192
+        val height = drawable.intrinsicHeight.takeIf { it > 0 } ?: 192
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.draw(canvas)
+        return bitmap
     }
 
     private fun openManageAllFilesSettings() {

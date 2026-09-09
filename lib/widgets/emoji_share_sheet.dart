@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:path/path.dart' as p;
@@ -47,8 +49,9 @@ Future<void> showEmojiShareSheet({
       final send = context.read<EmojiSendService>();
       final items = <_ShareGridItem>[
         _ShareGridItem(
-          icon: Icons.chat_bubble_outline,
+          fallbackIcon: Icons.chat_bubble_outline,
           label: '微信好友',
+          appPackage: EmojiSendService.wechatPackage,
           onTap: () => _runAction(
             rootContext: context,
             sheetContext: sheetContext,
@@ -57,8 +60,9 @@ Future<void> showEmojiShareSheet({
           ),
         ),
         _ShareGridItem(
-          icon: Icons.groups_outlined,
+          fallbackIcon: Icons.groups_outlined,
           label: 'QQ好友',
+          appPackage: EmojiSendService.qqPackage,
           onTap: () => _runAction(
             rootContext: context,
             sheetContext: sheetContext,
@@ -67,7 +71,7 @@ Future<void> showEmojiShareSheet({
           ),
         ),
         _ShareGridItem(
-          icon: Icons.push_pin_outlined,
+          fallbackIcon: Icons.push_pin_outlined,
           label: '时间置顶',
           onTap: () async {
             Navigator.pop(sheetContext);
@@ -86,7 +90,7 @@ Future<void> showEmojiShareSheet({
           },
         ),
         _ShareGridItem(
-          icon: Icons.ios_share_outlined,
+          fallbackIcon: Icons.ios_share_outlined,
           label: '通用分享',
           onTap: () => _runAction(
             rootContext: context,
@@ -110,7 +114,8 @@ Future<void> showEmojiShareSheet({
             ),
             Material(
               color: scheme.surface,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(16)),
               clipBehavior: Clip.antiAlias,
               child: SafeArea(
                 top: false,
@@ -198,14 +203,16 @@ class _OutsideDismissAreaState extends State<_OutsideDismissArea> {
 
 class _ShareGridItem {
   const _ShareGridItem({
-    required this.icon,
+    required this.fallbackIcon,
     required this.label,
     required this.onTap,
+    this.appPackage,
   });
 
-  final IconData icon;
+  final IconData fallbackIcon;
   final String label;
   final VoidCallback onTap;
+  final String? appPackage;
 }
 
 class _ShareGridCell extends StatelessWidget {
@@ -223,14 +230,25 @@ class _ShareGridCell extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
+          SizedBox(
             width: 52,
             height: 52,
-            decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(item.icon, size: 26, color: colorScheme.onSurface),
+            child: item.appPackage != null
+                ? _InstalledAppIcon(
+                    packageName: item.appPackage!,
+                    fallbackIcon: item.fallbackIcon,
+                  )
+                : Container(
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(
+                      item.fallbackIcon,
+                      size: 26,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
           ),
           const SizedBox(height: 8),
           Text(
@@ -242,6 +260,79 @@ class _ShareGridCell extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 从已安装应用读取图标，未安装时回退到 Material 图标。
+class _InstalledAppIcon extends StatefulWidget {
+  const _InstalledAppIcon({
+    required this.packageName,
+    required this.fallbackIcon,
+  });
+
+  final String packageName;
+  final IconData fallbackIcon;
+
+  @override
+  State<_InstalledAppIcon> createState() => _InstalledAppIconState();
+}
+
+class _InstalledAppIconState extends State<_InstalledAppIcon> {
+  Uint8List? _bytes;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load();
+    });
+  }
+
+  Future<void> _load() async {
+    final bytes =
+        await context.read<EmojiSendService>().getInstalledAppIcon(widget.packageName);
+    if (!mounted) return;
+    setState(() {
+      _bytes = bytes;
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final bytes = _bytes;
+
+    if (bytes != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Image.memory(
+          bytes,
+          width: 52,
+          height: 52,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: _loading
+          ? const Padding(
+              padding: EdgeInsets.all(14),
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Icon(
+              widget.fallbackIcon,
+              size: 26,
+              color: colorScheme.onSurface,
+            ),
     );
   }
 }

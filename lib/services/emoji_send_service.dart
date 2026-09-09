@@ -21,6 +21,27 @@ class EmojiSendService {
   static const wechatPackage = 'com.tencent.mm';
   static const qqPackage = 'com.tencent.mobileqq';
 
+  static final Map<String, Uint8List?> _appIconCache = {};
+
+  /// 读取已安装应用图标（Android）；未安装或失败返回 null。
+  Future<Uint8List?> getInstalledAppIcon(String packageName) async {
+    if (!Platform.isAndroid) return null;
+    if (_appIconCache.containsKey(packageName)) {
+      return _appIconCache[packageName];
+    }
+    try {
+      final bytes = await _shareChannel.invokeMethod<Uint8List>(
+        'getAppIcon',
+        {'packageName': packageName},
+      );
+      _appIconCache[packageName] = bytes;
+      return bytes;
+    } catch (_) {
+      _appIconCache[packageName] = null;
+      return null;
+    }
+  }
+
   /// 桌面端：复制到剪贴板并提示。手机端请使用 [presentEmojiShareOptions]。
   Future<void> sendWithFeedback(
     BuildContext context,
@@ -71,11 +92,19 @@ class EmojiSendService {
     }
   }
 
-  Future<String?> shareToWeChat(String filePath) =>
-      _shareToPackage(filePath, wechatPackage, appLabel: '微信');
+  Future<String?> shareToWeChat(String filePath) => _shareToPackage(
+        filePath,
+        wechatPackage,
+        appLabel: '微信',
+        target: 'wechat_friends',
+      );
 
-  Future<String?> shareToQQ(String filePath) =>
-      _shareToPackage(filePath, qqPackage, appLabel: 'QQ');
+  Future<String?> shareToQQ(String filePath) => _shareToPackage(
+        filePath,
+        qqPackage,
+        appLabel: 'QQ',
+        target: 'qq_friends',
+      );
 
   Future<String?> shareSystem(String filePath) async {
     try {
@@ -125,6 +154,7 @@ class EmojiSendService {
     String filePath,
     String packageName, {
     required String appLabel,
+    required String target,
   }) async {
     if (!Platform.isAndroid) {
       return shareSystem(filePath);
@@ -139,6 +169,7 @@ class EmojiSendService {
       await _shareChannel.invokeMethod<void>('shareToPackage', {
         'filePath': filePath,
         'packageName': packageName,
+        'target': target,
       });
       return null;
     } on PlatformException catch (e) {
